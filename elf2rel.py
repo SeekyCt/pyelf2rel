@@ -599,14 +599,8 @@ def make_section_relocations(section: BinarySection) -> Dict[int, bytes]:
     return ret
 
 
-@dataclass(frozen=True)
-class ModuleRelocs:
-    module_id: int
-    relocs: bytes
-
-
-def group_module_relocations(ctx, section_relocs: List[Dict[int, bytes]]) -> List[ModuleRelocs]:
-    """Split up a list of relocations by which module they're targgetting"""
+def group_module_relocations(section_relocs: List[Dict[int, bytes]]) -> Dict[int, bytes]:
+    """Split up a list of relocations into binaries for which module they're targetting"""
 
     # Group relocations
     ret = defaultdict(bytearray)
@@ -616,8 +610,33 @@ def group_module_relocations(ctx, section_relocs: List[Dict[int, bytes]]) -> Lis
     for module, relocs in ret.items():
         relocs.extend(RelReloc.encode_reloc(0, RelType.RVL_STOP, 0, 0))
 
-    # Sort groups
-    base = max(ret.keys())
+    return dict(ret)
+
+
+def build_relocations(ctx: Context, file_pos: int, module_relocs: Dict[int, bytes]
+                      ) -> Tuple[int, int, int, int, int, bytes]:
+    """Builds the linked relocation and imp tables
+    
+    Returns new file position, relocations offset, imp table offset, imp table size, fix size,
+    and the combined tables binary"""
+
+    # Get table size
+    imp_size = len(module_relocs) * 8
+
+    # Place imp before relocations if needed
+    pre_pad = 0
+    if ctx.version >= 3 or ctx.match_elf2rel:
+        # elf2rel aligns this to 8 bytes, and rounds up 0-length padding
+        if ctx.match_elf2rel:
+            file_pos, pre_pad = align_to_elf2rel(file_pos, 8)
+
+        imp_offset = file_pos
+        file_pos += imp_size
+    else:
+        imp_offset = None
+
+    # Sort reloc groups
+    base = max(module_relocs.keys())
     if ctx.match_elf2rel:
         def module_key(module):
             if module in (0, ctx.module_id):
@@ -636,44 +655,22 @@ def group_module_relocations(ctx, section_relocs: List[Dict[int, bytes]]) -> Lis
             return module
     else:
         module_key = None
-
-    modules = sorted(ret.keys(), key=module_key)
-
-    return [ModuleRelocs(module, ret[module]) for module in modules]
-
-
-def build_relocations(ctx: Context, file_pos: int, module_relocs: List[ModuleRelocs]
-                      ) -> Tuple[int, int, int, int, int, bytes]:
-    """Builds the linked relocation and imp tables"""
-
-    # Get table size
-    imp_size = len(module_relocs) * 8
-
-    # Place imp before relocations if needed
-    pre_pad = 0
-    if ctx.version >= 3 or ctx.match_elf2rel:
-        # elf2rel aligns this to 8 bytes, and rounds up 0-length padding
-        if ctx.match_elf2rel:
-            file_pos, pre_pad = align_to_elf2rel(file_pos, 8)
-
-        imp_offset = file_pos
-        file_pos += imp_size
-    else:
-        imp_offset = None
+    modules = sorted(module_relocs.keys(), key=module_key)
 
     # Build tables
     rel_dat = bytearray()
     imp_dat = bytearray()
     reloc_offset = file_pos
     fix_size = file_pos
-    for module in module_relocs:
-        imp = RelImp(module.module_id, file_pos)
+    for module_id in modules:
+        relocs = module_relocs[module_id]
+        imp = RelImp(module_id, file_pos)
         imp_dat.extend(imp.to_binary())
 
-        rel_dat.extend(module.relocs)
-        file_pos += len(module.relocs)
+        rel_dat.extend(relocs)
+        file_pos += len(relocs)
 
-        if module.module_id not in (0, ctx.module_id):
+        if module_id not in (0, ctx.module_id):
             fix_size = file_pos
 
     # Combine data
@@ -725,7 +722,7 @@ def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
 
     # Build relocs
     section_relocs = [make_section_relocations(sec) for sec in sections]
-    module_relocs = group_module_relocations(ctx, section_relocs)
+    module_relocs = group_module_relocations(section_relocs)
     
     # Build reloc contents
     file_pos, reloc_offset, imp_offset, imp_size, fix_size, reloc_dat = \
