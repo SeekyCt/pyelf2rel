@@ -33,6 +33,8 @@ def align_to(offs: int, align: int) -> Tuple[int, int]:
 
 
 def align_to_elf2rel(offs: int, align: int) -> Tuple[int, int]:
+    """Variant of align_to where padding of 0 changes to padding of n instead"""
+
     padding = align - (offs % align)
 
     new_offs = offs + padding
@@ -48,7 +50,7 @@ def align_to_elf2rel(offs: int, align: int) -> Tuple[int, int]:
 @dataclass(frozen=True)
 class Symbol:
     """pyelftools symbol substitute"""
-    
+
     name: str
     st_value: int
     st_size: int
@@ -138,16 +140,22 @@ class RelSymbol:
 
 @dataclass
 class RelSectionInfo:
+    """Container for a section info table entry"""
+
     offset: int
     length: int
     executable: bool
 
     def to_binary(self) -> bytes:
+        """Gets the binary representation of the struct"""
+
         mask = 1 if self.executable else 0
         return pack(">2I", self.offset | mask, self.length)
     
     @staticmethod
     def binary_size(length: int) -> int:
+        """Gets the size of a section info table in bytes"""
+
         return length * 8
 
 
@@ -185,11 +193,15 @@ class RelReloc:
 
     @staticmethod
     def encode_reloc(relative_offset: int, t: RelType, section: int, addend: int):
+        """Gets the binary representation of a relocation"""
+
         return pack(">HBBI", relative_offset, t, section, addend)
 
 
 @dataclass
 class RelImp:
+    """Container for an imp table entry"""
+
     module_id: int
     offset: int
 
@@ -199,6 +211,8 @@ class RelImp:
 
 @dataclass
 class RELHeader:
+    """Container for the rel header struct"""
+
     id: int # u32
     next: int # u32
     prev: int # u32
@@ -227,6 +241,8 @@ class RELHeader:
     fix_size: Optional[int] # u32
 
     def to_binary(self) -> bytes:
+        """Gets the binary representaiton of the header"""
+
         dat = pack(
             ">12I4B3I",
             self.id,
@@ -264,6 +280,8 @@ class RELHeader:
 
     @staticmethod
     def binary_size(version: int) -> int:
+        """Calculates the binary size of the struct"""
+
         size = 0x40
 
         if version >= 2:
@@ -330,6 +348,8 @@ def load_lst(filename: str) -> Dict[str, RelSymbol]:
 
 
 class Context:
+    """Utility struct for passing common data between the conversion functions"""
+
     version: int
     match_elf2rel: bool
     module_id: int
@@ -379,6 +399,8 @@ elf2rel_section_mask = [
 
 
 def should_include_section(ctx: Context, sec_id: int, ignore_sections: List[str]) -> bool:
+    """Checks if an section should be emitted in the rel"""
+
     section = ctx.plf.get_section(sec_id)
 
     if section.name in ignore_sections:
@@ -398,6 +420,8 @@ def should_include_section(ctx: Context, sec_id: int, ignore_sections: List[str]
 
 @dataclass
 class BinarySection:
+    """Container for a processed section"""
+
     sec_id: int
     header: Section
     contents: bytes
@@ -406,7 +430,7 @@ class BinarySection:
 
 
 def parse_section(ctx: Context, sec_id: int) -> BinarySection:
-    """Create the binary data and relocation list for a section"""
+    """Extract the contents and relocations for a section"""
 
     # Get section
     sec = ctx.plf.get_section(sec_id)
@@ -463,12 +487,13 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
     return BinarySection(sec_id, sec, dat, runtime_relocs, static_relocs)
 
 
-
 def build_section_contents(ctx: Context, file_pos: int, sections: List[BinarySection]
                            ) -> Tuple[int, bytes, Dict[int, int]]:
+    """Create the linked binary data for the sections"""
+
     dat = bytearray()
-    offsets = {}
-    internal_offsets = {}
+    offsets = {} # positions in file
+    internal_offsets = {} # positions in dat
     for section in sections:
         if section.header["sh_type"] != "SHT_PROGBITS":
             continue
@@ -482,6 +507,8 @@ def build_section_contents(ctx: Context, file_pos: int, sections: List[BinarySec
         dat.extend(section.contents)
     
     def early_relocate(t: RelType, sec_id: int, offset: int, target_sec_id: int, target: int):
+        """Apply a relocation at compile time to a section"""
+
         # Get instruction
         offs = internal_offsets[sec_id] + offset
         instr = int.from_bytes(dat[offs:offs+4], 'big')
@@ -514,6 +541,8 @@ def build_section_contents(ctx: Context, file_pos: int, sections: List[BinarySec
 
 
 def build_section_info(sections: List[Optional[BinarySection]], offsets: Dict[int, int]) -> bytes:
+    """Builds the linked section info table"""
+
     dat = bytearray()
     for sec in sections:
         if sec is not None:
@@ -531,7 +560,7 @@ def build_section_info(sections: List[Optional[BinarySection]], offsets: Dict[in
 
 
 def make_section_relocations(section: BinarySection) -> Dict[int, bytes]:
-    """Creates the binary data for a secton's relocations"""
+    """Creates the binary data for a section's relocations"""
 
     # Get modules referenced
     modules = {r.target_module for r in section.runtime_relocs}
@@ -577,13 +606,17 @@ class ModuleRelocs:
 
 
 def group_module_relocations(ctx, section_relocs: List[Dict[int, bytes]]) -> List[ModuleRelocs]:
+    """Split up a list of relocations by which module they're targgetting"""
+
+    # Group relocations
     ret = defaultdict(bytearray)
     for section in section_relocs:
         for module, relocs in section.items():
             ret[module].extend(relocs)
     for module, relocs in ret.items():
         relocs.extend(RelReloc.encode_reloc(0, RelType.RVL_STOP, 0, 0))
-    
+
+    # Sort groups
     base = max(ret.keys())
     if ctx.match_elf2rel:
         def module_key(module):
@@ -611,18 +644,24 @@ def group_module_relocations(ctx, section_relocs: List[Dict[int, bytes]]) -> Lis
 
 def build_relocations(ctx: Context, file_pos: int, module_relocs: List[ModuleRelocs]
                       ) -> Tuple[int, int, int, int, int, bytes]:
+    """Builds the linked relocation and imp tables"""
 
+    # Get table size
     imp_size = len(module_relocs) * 8
 
+    # Place imp before relocations if needed
     pre_pad = 0
     if ctx.version >= 3 or ctx.match_elf2rel:
+        # elf2rel aligns this to 8 bytes, and rounds up 0-length padding
         if ctx.match_elf2rel:
             file_pos, pre_pad = align_to_elf2rel(file_pos, 8)
+
         imp_offset = file_pos
         file_pos += imp_size
     else:
         imp_offset = None
 
+    # Build tables
     rel_dat = bytearray()
     imp_dat = bytearray()
     reloc_offset = file_pos
@@ -652,10 +691,14 @@ def build_relocations(ctx: Context, file_pos: int, module_relocs: List[ModuleRel
 
 def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
                match_elf2rel: bool = False, ignore_sections: Optional[List[str]] = None) -> bytes:
-    ctx = Context(version, module_id, elf_path, lst_path, match_elf2rel)
+    """Converts a partially linked elf file into a rel file"""
 
+    # Setup default parameters
     if ignore_sections is None:
         ignore_sections = []
+
+    # Build context
+    ctx = Context(version, module_id, elf_path, lst_path, match_elf2rel)
 
     # Give space for header
     file_pos = RELHeader.binary_size(version)
@@ -722,6 +765,7 @@ def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
     epilog = ctx.symbols["_epilog"]
     unresolved = ctx.symbols["_unresolved"]
 
+    # Build header
     header = RELHeader(
         ctx.module_id,
         0,
@@ -747,6 +791,7 @@ def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
         fix_size,
     )
 
+    # Build full binary
     dat = bytearray()
     dat.extend(header.to_binary())
     dat.extend(section_info)
