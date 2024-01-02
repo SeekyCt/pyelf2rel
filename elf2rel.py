@@ -15,6 +15,31 @@ from elftools.elf.relocation import RelocationSection
 from elftools.elf.sections import Section, SymbolTableSection
 
 
+###########
+# Utility #
+###########
+
+
+def align_to(offs: int, align: int) -> Tuple[int, int]:
+    """Aligns an offset and gets the padding required"""
+
+    mask = align - 1
+
+    new_offs = (offs + mask) & ~mask
+
+    padding = new_offs - offs
+
+    return new_offs, padding
+
+
+def align_to_elf2rel(offs: int, align: int) -> Tuple[int, int]:
+    padding = align - (offs % align)
+
+    new_offs = offs + padding
+
+    return new_offs, padding
+
+
 ##########################
 # Pyelftools Substitutes #
 ##########################
@@ -96,9 +121,9 @@ def read_relocs(f: FileIO, rela: RelocationSection) -> List["Relocation"]:
     return relocs
 
 
-###############
-# LST Loading #
-###############
+#############
+# Rel Types #
+#############
 
 
 @dataclass
@@ -111,53 +136,19 @@ class RelSymbol:
     name: str
 
 
-def load_lst(filename: str) -> Dict[str, RelSymbol]:
-    """Parses an LST symbol map"""
+@dataclass
+class RelSectionInfo:
+    offset: int
+    length: int
+    executable: bool
 
-    # Load LST
-    with open(filename) as f:
-        lines = f.readlines()
-
-    # Parse lines
-    symbols = {}
-    for i, line in enumerate(lines):
-        # Ignore comments and whitespace
-        line = line.strip()
-        if line.startswith("/") or len(line) == 0:
-            continue
-
-        # Try parse
-        try:
-            # Dol - addr:name
-            # Rel - moduleId,sectionId,offset:name
-            colon_parts = [s.strip() for s in line.split(":")]
-            other, name = colon_parts
-            comma_parts = [s.strip() for s in other.split(',')]
-            if len(comma_parts) == 1:
-                addr = comma_parts[0]
-                symbols[name] = RelSymbol(
-                    0,
-                    0,
-                    int(addr, 16),
-                    name
-                )
-            else:
-                module_id, section_id, offset = comma_parts
-                symbols[name] = RelSymbol(
-                    int(module_id, 0),
-                    int(section_id, 0),
-                    int(offset, 16),
-                    name
-                )
-        except Exception as e:
-            raise Exception(f"Error on line {i+1}: {e}")
-
-    return symbols
-
-
-##############
-# Conversion #
-##############
+    def to_binary(self) -> bytes:
+        mask = 1 if self.executable else 0
+        return pack(">2I", self.offset | mask, self.length)
+    
+    @staticmethod
+    def binary_size(length: int) -> int:
+        return length * 8
 
 
 @unique
@@ -195,6 +186,15 @@ class RelReloc:
     @staticmethod
     def encode_reloc(relative_offset: int, t: RelType, section: int, addend: int):
         return pack(">HBBI", relative_offset, t, section, addend)
+
+
+@dataclass
+class RelImp:
+    module_id: int
+    offset: int
+
+    def to_binary(self) -> bytes:
+        return pack(">2I", self.module_id, self.offset)
 
 
 @dataclass
@@ -275,6 +275,60 @@ class RELHeader:
         return size
 
 
+###############
+# LST Loading #
+###############
+
+
+def load_lst(filename: str) -> Dict[str, RelSymbol]:
+    """Parses an LST symbol map"""
+
+    # Load LST
+    with open(filename) as f:
+        lines = f.readlines()
+
+    # Parse lines
+    symbols = {}
+    for i, line in enumerate(lines):
+        # Ignore comments and whitespace
+        line = line.strip()
+        if line.startswith("/") or len(line) == 0:
+            continue
+
+        # Try parse
+        try:
+            # Dol - addr:name
+            # Rel - moduleId,sectionId,offset:name
+            colon_parts = [s.strip() for s in line.split(":")]
+            other, name = colon_parts
+            comma_parts = [s.strip() for s in other.split(',')]
+            if len(comma_parts) == 1:
+                addr = comma_parts[0]
+                symbols[name] = RelSymbol(
+                    0,
+                    0,
+                    int(addr, 16),
+                    name
+                )
+            else:
+                module_id, section_id, offset = comma_parts
+                symbols[name] = RelSymbol(
+                    int(module_id, 0),
+                    int(section_id, 0),
+                    int(offset, 16),
+                    name
+                )
+        except Exception as e:
+            raise Exception(f"Error on line {i+1}: {e}")
+
+    return symbols
+
+
+##############
+# Conversion #
+##############
+
+
 class Context:
     version: int
     match_elf2rel: bool
@@ -313,15 +367,6 @@ def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
         return RelSymbol(ctx.module_id, sec, sym.st_value, sym.name)
 
 
-@dataclass
-class BinarySection:
-    sec_id: int
-    header: Section
-    contents: bytes
-    runtime_relocs: List[RelReloc]
-    static_relocs: List[RelReloc]
-
-
 elf2rel_section_mask = [
     ".init",
 	".text",
@@ -349,6 +394,15 @@ def should_include_section(ctx: Context, sec_id: int, ignore_sections: List[str]
             section["sh_type"] in ("SHT_PROGBITS", "SHT_NOBITS")
             and section["sh_flags"] & SH_FLAGS.SHF_ALLOC != 0
         )
+
+
+@dataclass
+class BinarySection:
+    sec_id: int
+    header: Section
+    contents: bytes
+    runtime_relocs: List[RelReloc]
+    static_relocs: List[RelReloc]
 
 
 def parse_section(ctx: Context, sec_id: int) -> BinarySection:
@@ -409,24 +463,6 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
     return BinarySection(sec_id, sec, dat, runtime_relocs, static_relocs)
 
 
-def align_to(offs: int, align: int) -> Tuple[int, int]:
-    """Aligns an offset and gets the padding required"""
-
-    mask = align - 1
-
-    new_offs = (offs + mask) & ~mask
-
-    padding = new_offs - offs
-
-    return new_offs, padding
-
-
-def align_to_elf2rel(offs: int, align: int) -> Tuple[int, int]:
-    padding = align - (offs % align)
-
-    new_offs = offs + padding
-
-    return new_offs, padding
 
 def build_section_contents(ctx: Context, file_pos: int, sections: List[BinarySection]
                            ) -> Tuple[int, bytes, Dict[int, int]]:
@@ -475,21 +511,6 @@ def build_section_contents(ctx: Context, file_pos: int, sections: List[BinarySec
                     early_relocate(reloc.t, sec.sec_id, reloc.offset, unresolved.st_shndx, unresolved.st_value)
 
     return file_pos, bytes(dat), offsets
-
-
-@dataclass
-class RelSectionInfo:
-    offset: int
-    length: int
-    executable: bool
-
-    def to_binary(self) -> bytes:
-        mask = 1 if self.executable else 0
-        return pack(">2I", self.offset | mask, self.length)
-    
-    @staticmethod
-    def binary_size(length: int) -> int:
-        return length * 8
 
 
 def build_section_info(sections: List[Optional[BinarySection]], offsets: Dict[int, int]) -> bytes:
@@ -588,15 +609,6 @@ def group_module_relocations(ctx, section_relocs: List[Dict[int, bytes]]) -> Lis
     return [ModuleRelocs(module, ret[module]) for module in modules]
 
 
-@dataclass
-class RelImp:
-    module_id: int
-    offset: int
-
-    def to_binary(self) -> bytes:
-        return pack(">2I", self.module_id, self.offset)
-
-
 def build_relocations(ctx: Context, file_pos: int, module_relocs: List[ModuleRelocs]
                       ) -> Tuple[int, int, int, int, int, bytes]:
 
@@ -636,15 +648,6 @@ def build_relocations(ctx: Context, file_pos: int, module_relocs: List[ModuleRel
         dat = bytes(pre_pad) + rel_dat + imp_dat
 
     return file_pos, reloc_offset, imp_offset, imp_size, fix_size, dat
-
-
-def build_imp(rel_offsets: Dict[int, int]):
-    dat = bytearray()
-    for module, offset in rel_offsets.items():
-        imp = RelImp(module, offset)
-        dat.extend(imp.to_binary())
-    
-    return dat
 
 
 def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
