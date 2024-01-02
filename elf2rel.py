@@ -91,7 +91,7 @@ def map_symbols(f: FileIO, plf: ELFFile) -> Tuple[Dict[str, "Symbol"], Dict[int,
     return symbols, symbols_id
 
 
-@dataclass
+@dataclass(frozen=True)
 class Relocation:
     """pyelftools relocation substitute"""
 
@@ -128,7 +128,7 @@ def read_relocs(f: FileIO, rela: RelocationSection) -> List["Relocation"]:
 #############
 
 
-@dataclass
+@dataclass(frozen=True)
 class RelSymbol:
     """Container for a symbol in a rel file"""
 
@@ -138,7 +138,7 @@ class RelSymbol:
     name: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class RelSectionInfo:
     """Container for a section info table entry"""
 
@@ -176,7 +176,7 @@ class RelType(IntEnum):
     RVL_STOP = 203
 
 
-@dataclass
+@dataclass(frozen=True)
 class RelReloc:
     """Container for one relocation"""
 
@@ -198,7 +198,7 @@ class RelReloc:
         return pack(">HBBI", relative_offset, t, section, addend)
 
 
-@dataclass
+@dataclass(frozen=True)
 class RelImp:
     """Container for an imp table entry"""
 
@@ -209,8 +209,8 @@ class RelImp:
         return pack(">2I", self.module_id, self.offset)
 
 
-@dataclass
-class RELHeader:
+@dataclass(frozen=True)
+class RelHeader:
     """Container for the rel header struct"""
 
     id: int # u32
@@ -418,7 +418,7 @@ def should_include_section(ctx: Context, sec_id: int, ignore_sections: List[str]
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class BinarySection:
     """Container for a processed section"""
 
@@ -599,7 +599,7 @@ def make_section_relocations(section: BinarySection) -> Dict[int, bytes]:
     return ret
 
 
-@dataclass
+@dataclass(frozen=True)
 class ModuleRelocs:
     module_id: int
     relocs: bytes
@@ -701,7 +701,7 @@ def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
     ctx = Context(version, module_id, elf_path, lst_path, match_elf2rel)
 
     # Give space for header
-    file_pos = RELHeader.binary_size(version)
+    file_pos = RelHeader.binary_size(version)
     section_info_offset = file_pos
 
     # Parse sections
@@ -766,7 +766,7 @@ def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
     unresolved = ctx.symbols["_unresolved"]
 
     # Build header
-    header = RELHeader(
+    header = RelHeader(
         ctx.module_id,
         0,
         0,
