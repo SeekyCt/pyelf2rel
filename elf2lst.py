@@ -9,13 +9,18 @@ from typing import Dict, Tuple
 from elftools.elf.constants import SHN_INDICES
 from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_ST_INFO_BIND
-from elftools.elf.sections import Section, SymbolTableSection
+from elftools.elf.sections import SymbolTableSection
+
+
+##########################
+# Pyelftools Substitutes #
+##########################
 
 
 @dataclass(frozen=True)
 class Symbol:
     """pyelftools symbol substitute"""
-    
+
     name: str
     st_value: int
     st_size: int
@@ -56,6 +61,11 @@ def map_symbols(f: FileIO, plf: ELFFile) -> Tuple[Dict[str, "Symbol"], Dict[int,
     return symbols, symbols_id
 
 
+#############
+# Rel Types #
+#############
+
+
 @dataclass
 class RelSymbol:
     """Container for a symbol in a rel file"""
@@ -76,10 +86,17 @@ class RelSymbol:
             return f"{self.module_id},{self.section_id},{self.offset:08x}:{self.name}"
 
 
+##############
+# Conversion #
+##############
+
+
 def elf_to_lst(module_id: int, elf_path: str) -> str:
+    """Creates an LST map of the symbols in an ELF file"""
+
     f = open(elf_path, 'rb')
     plf = ELFFile(f)
-    symbols, symbols_id = map_symbols(f, plf)
+    symbols, _ = map_symbols(f, plf)
 
     rel_symbols = [
         RelSymbol.from_elf(module_id, sym)
