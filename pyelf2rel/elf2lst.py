@@ -107,7 +107,7 @@ def elf_to_lst(module_id: int, elf_path: str) -> str:
     return f"// {elf_path}\n" + '\n'.join(s.to_lst() for s in rel_symbols)
 
 
-if __name__ == '__main__':
+def elf2lst_main():
     parser = ArgumentParser()
     parser.add_argument("lst_path", type=str, help="Output lst path")
     parser.add_argument("inputs", type=str, nargs='+', help="Input module id and elf path pairs")
@@ -124,3 +124,7 @@ if __name__ == '__main__':
 
     with open(args.lst_path, 'w') as f:
         f.write('\n\n'.join(txts))
+
+
+if __name__ == '__main__':
+    elf2lst_main()

@@ -797,7 +797,7 @@ def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
     
     return bytes(dat)
 
-if __name__ == '__main__':
+def elf2rel_main():
     parser = ArgumentParser()
 
     # Positional API - boost::program_options behaves differently to argparse
@@ -841,3 +841,6 @@ if __name__ == '__main__':
         dat = elf_to_rel(args.rel_id, input_file, symbol_file, args.rel_version,
                          args.match_elf2rel, args.ignore_sections)
         f.write(dat)
+
+if __name__ == '__main__':
+    elf2rel_main()
