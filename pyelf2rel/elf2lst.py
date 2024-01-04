@@ -120,7 +120,7 @@ def elf_to_lst(module_id: int, file: BinaryIO) -> str:
     return "\n".join(s.to_lst() for s in rel_symbols)
 
 
-def elf2lst_main():
+def main():
     parser = ArgumentParser()
     parser.add_argument("lst_path", type=str, help="Output lst path")
     arg_inputs = parser.add_argument(
@@ -145,4 +145,4 @@ def elf2lst_main():
 
 
 if __name__ == "__main__":
-    elf2lst_main()
+    main()

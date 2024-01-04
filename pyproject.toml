@@ -34,8 +34,8 @@ Homepage = "https://github.com/SeekyCt/pyelf2rel"
 Issues = "https://github.com/SeekyCt/pyelf2rel/issues"
 
 [project.scripts]
-elf2rel = 'pyelf2rel:elf2rel_main'
-elf2lst = 'pyelf2rel:elf2lst_main'
+elf2rel = 'pyelf2rel.elf2rel:main'
+elf2lst = 'pyelf2rel.elf2rel:main'
 
 [tool.hatch.version]
 source = "vcs"

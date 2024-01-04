@@ -844,7 +844,7 @@ def elf_to_rel(
     return bytes(dat)
 
 
-def elf2rel_main():
+def main():
     parser = ArgumentParser()
 
     # Positional API - boost::program_options behaves differently to argparse
@@ -901,4 +901,4 @@ def elf2rel_main():
 
 
 if __name__ == "__main__":
-    elf2rel_main()
+    main()
