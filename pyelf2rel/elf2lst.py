@@ -1,15 +1,29 @@
 #!/usr/bin/env python3
-from argparse import ArgumentParser
+from __future__ import annotations
+
+from argparse import ArgumentError, ArgumentParser
 from dataclasses import dataclass
 from functools import cached_property
-from io import FileIO
 from struct import unpack
-from typing import Dict, Tuple
+from typing import TYPE_CHECKING
 
 from elftools.elf.constants import SHN_INDICES
 from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_ST_INFO_BIND
-from elftools.elf.sections import SymbolTableSection
+
+if TYPE_CHECKING:
+    from typing import BinaryIO
+
+    from elftools.elf.sections import SymbolTableSection
+
+###########
+# Utility #
+###########
+
+
+class DuplicateSymbolError(Exception):
+    def __init__(self, symbol: str):
+        super().__init__(f"Duplicate symbol {symbol}")
 
 
 ##########################
@@ -33,7 +47,7 @@ class Symbol:
         return self.st_info >> 4
 
 
-def map_symbols(f: FileIO, plf: ELFFile) -> Tuple[Dict[str, "Symbol"], Dict[int, "Symbol"]]:
+def map_symbols(f: BinaryIO, plf: ELFFile) -> tuple[dict[str, Symbol], dict[int, Symbol]]:
     """Loads symbols from an ELF file into dicts mapped by name and id"""
 
     # Get symbol table
@@ -54,10 +68,11 @@ def map_symbols(f: FileIO, plf: ELFFile) -> Tuple[Dict[str, "Symbol"], Dict[int,
 
         # Add to dicts
         if sym.name != "" and sym.st_bind == ENUM_ST_INFO_BIND["STB_GLOBAL"]:
-            assert sym.name not in symbols, f"Duplicate symbol {sym.name}"
+            if sym.name in symbols:
+                raise DuplicateSymbolError(sym.name)
             symbols[sym.name] = sym
         symbols_id[i] = sym
-    
+
     return symbols, symbols_id
 
 
@@ -91,12 +106,11 @@ class RelSymbol:
 ##############
 
 
-def elf_to_lst(module_id: int, elf_path: str) -> str:
+def elf_to_lst(module_id: int, file: BinaryIO) -> str:
     """Creates an LST map of the symbols in an ELF file"""
 
-    f = open(elf_path, 'rb')
-    plf = ELFFile(f)
-    symbols, _ = map_symbols(f, plf)
+    plf = ELFFile(file)
+    symbols, _ = map_symbols(file, plf)
 
     rel_symbols = [
         RelSymbol.from_elf(module_id, sym)
@@ -104,23 +118,27 @@ def elf_to_lst(module_id: int, elf_path: str) -> str:
         if sym.st_shndx != SHN_INDICES.SHN_UNDEF
     ]
 
-    return f"// {elf_path}\n" + '\n'.join(s.to_lst() for s in rel_symbols)
+    return '\n'.join(s.to_lst() for s in rel_symbols)
 
 
 def elf2lst_main():
     parser = ArgumentParser()
     parser.add_argument("lst_path", type=str, help="Output lst path")
-    parser.add_argument("inputs", type=str, nargs='+', help="Input module id and elf path pairs")
+    arg_inputs = parser.add_argument("inputs", type=str, nargs='+',
+                                     help="Input module id and elf path pairs")
     args = parser.parse_args()
 
-    assert len(args.inputs) % 2 == 0
+    if len(args.inputs) % 2 != 0:
+        raise ArgumentError(arg_inputs, "Inputs require a module id and path for each entry")
 
-    pairwise = lambda l: zip(*[iter(l)]*2) 
+    def pairwise(seq: list):
+        return zip(*[iter(seq)]*2)
 
-    txts = [
-        elf_to_lst(module_id, elf_path)
-        for module_id, elf_path in pairwise(args.inputs)
-    ]
+    txts = []
+    for module_id, elf_path in pairwise(args.inputs):
+        with open(elf_path, 'rb') as f:
+            txt = f"// {elf_path}\n" + elf_to_lst(module_id, f)
+        txts.append(txt)
 
     with open(args.lst_path, 'w') as f:
         f.write('\n\n'.join(txts))

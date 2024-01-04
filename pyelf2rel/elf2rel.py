@@ -1,26 +1,55 @@
 #!/usr/bin/env python3
-from argparse import ArgumentParser
+from __future__ import annotations
+
+from argparse import ArgumentError, ArgumentParser
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import IntEnum, unique
 from functools import cached_property
-from io import FileIO
 from struct import pack, unpack
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 from elftools.elf.constants import SH_FLAGS, SHN_INDICES
-from elftools.elf.enums import ENUM_ST_INFO_BIND
 from elftools.elf.elffile import ELFFile
-from elftools.elf.relocation import RelocationSection
-from elftools.elf.sections import Section, SymbolTableSection
+from elftools.elf.enums import ENUM_ST_INFO_BIND
 
+if TYPE_CHECKING:
+    from typing import BinaryIO
+
+    from elftools.elf.relocation import RelocationSection
+    from elftools.elf.sections import Section, SymbolTableSection
 
 ###########
 # Utility #
 ###########
 
 
-def align_to(offs: int, align: int) -> Tuple[int, int]:
+class MultipleBSSError(Exception):
+    def __init__(self):
+        super().__init__("Multiple bss sections not supported")
+
+
+class LSTFormatError(Exception):
+    def __init__(self, line: int, exception: str):
+        super().__init__(f"Error on line {line+1}: {exception}")
+
+
+class DuplicateSymbolError(Exception):
+    def __init__(self, symbol: str):
+        super().__init__(f"Duplicate symbol {symbol}")
+
+
+class MissingSymbolError(Exception):
+    def __init__(self, symbol: str):
+        super().__init__(f"Missing symbol {symbol}")
+
+
+class UnsupportedRelocationError(Exception):
+    def __init__(self, reloc_type: int):
+        super().__init__(f"Unsupported relocation type {reloc_type}")
+
+
+def align_to(offs: int, align: int) -> tuple[int, int]:
     """Aligns an offset and gets the padding required"""
 
     mask = align - 1
@@ -32,7 +61,7 @@ def align_to(offs: int, align: int) -> Tuple[int, int]:
     return new_offs, padding
 
 
-def align_to_elf2rel(offs: int, align: int) -> Tuple[int, int]:
+def align_to_elf2rel(offs: int, align: int) -> tuple[int, int]:
     """Variant of align_to where padding of 0 changes to padding of n instead"""
 
     padding = align - (offs % align)
@@ -63,7 +92,7 @@ class Symbol:
         return self.st_info >> 4
 
 
-def map_symbols(f: FileIO, plf: ELFFile) -> Tuple[Dict[str, "Symbol"], Dict[int, "Symbol"]]:
+def map_symbols(f: BinaryIO, plf: ELFFile) -> tuple[dict[str, Symbol], dict[int, Symbol]]:
     """Loads symbols from an ELF file into dicts mapped by name and id"""
 
     # Get symbol table
@@ -84,10 +113,11 @@ def map_symbols(f: FileIO, plf: ELFFile) -> Tuple[Dict[str, "Symbol"], Dict[int,
 
         # Add to dicts
         if sym.name != "" and sym.st_bind == ENUM_ST_INFO_BIND["STB_GLOBAL"]:
-            assert sym.name not in symbols, f"Duplicate symbol {sym.name}"
+            if sym.name in symbols:
+                raise DuplicateSymbolError(sym.name)
             symbols[sym.name] = sym
         symbols_id[i] = sym
-    
+
     return symbols, symbols_id
 
 
@@ -101,7 +131,7 @@ class Relocation:
     r_addend: int
 
 
-def read_relocs(f: FileIO, rela: RelocationSection) -> List["Relocation"]:
+def read_relocs(f: BinaryIO, rela: RelocationSection) -> list[Relocation]:
     """Loads relocations from a rela section in an ELF file"""
 
     # Iterate relocations
@@ -151,7 +181,7 @@ class RelSectionInfo:
 
         mask = 1 if self.executable else 0
         return pack(">2I", self.offset | mask, self.length)
-    
+
     @staticmethod
     def binary_size(length: int) -> int:
         """Gets the size of a section info table in bytes"""
@@ -186,6 +216,8 @@ class RelReloc:
     section: int
     addend: int
 
+    MAX_DELTA = 0xffff
+
     def to_binary(self, relative_offset: int) -> bytes:
         """Gets the binary representation of the relocation"""
 
@@ -213,9 +245,9 @@ class RelImp:
 class RelHeader:
     """Container for the rel header struct"""
 
-    id: int # u32
-    next: int # u32
-    prev: int # u32
+    module_id: int # u32
+    next_rel: int # u32
+    prev_rel: int # u32
     num_sections: int # u32
     section_info_offset: int # u32
     name_offset: int # u32
@@ -233,21 +265,23 @@ class RelHeader:
     epilog: int # u32
     unresolved: int # u32
 
-    # v2 
-    align: Optional[int] # u32
-    bss_align: Optional[int] # u32
+    # v2
+    align: int | None # u32
+    bss_align: int | None # u32
+    ALIGN_MIN_VER = 2
 
     # v3
-    fix_size: Optional[int] # u32
+    fix_size: int | None # u32
+    FIX_SIZE_MIN_VER = 3
 
     def to_binary(self) -> bytes:
         """Gets the binary representaiton of the header"""
 
         dat = pack(
             ">12I4B3I",
-            self.id,
-            self.next,
-            self.prev,
+            self.module_id,
+            self.next_rel,
+            self.prev_rel,
             self.num_sections,
             self.section_info_offset,
             self.name_offset,
@@ -266,16 +300,16 @@ class RelHeader:
             self.unresolved,
         )
 
-        if self.version >= 2:
+        if self.version >= RelHeader.ALIGN_MIN_VER:
             dat += pack(
                 ">2I",
                 self.align,
                 self.bss_align,
             )
 
-        if self.version >= 3:
+        if self.version >= RelHeader.FIX_SIZE_MIN_VER:
             dat += pack(">I", self.fix_size)
-        
+
         return dat
 
     @staticmethod
@@ -284,10 +318,10 @@ class RelHeader:
 
         size = 0x40
 
-        if version >= 2:
+        if version >= RelHeader.ALIGN_MIN_VER:
             size += 8
 
-        if version >= 3:
+        if version >= RelHeader.FIX_SIZE_MIN_VER:
             size += 4
 
         return size
@@ -298,7 +332,7 @@ class RelHeader:
 ###############
 
 
-def load_lst(filename: str) -> Dict[str, RelSymbol]:
+def load_lst(filename: str) -> dict[str, RelSymbol]:
     """Parses an LST symbol map"""
 
     # Load LST
@@ -307,37 +341,46 @@ def load_lst(filename: str) -> Dict[str, RelSymbol]:
 
     # Parse lines
     symbols = {}
-    for i, line in enumerate(lines):
+    for i, full_line in enumerate(lines):
         # Ignore comments and whitespace
-        line = line.strip()
+        line = full_line.strip()
         if line.startswith("/") or len(line) == 0:
             continue
 
         # Try parse
+        # Dol - addr:name
+        # Rel - moduleId,sectionId,offset:name
+        colon_parts = [s.strip() for s in line.split(":")]
         try:
-            # Dol - addr:name
-            # Rel - moduleId,sectionId,offset:name
-            colon_parts = [s.strip() for s in line.split(":")]
             other, name = colon_parts
-            comma_parts = [s.strip() for s in other.split(',')]
-            if len(comma_parts) == 1:
-                addr = comma_parts[0]
+        except ValueError as e:
+            raise LSTFormatError(i, "Expected exactly 1 colon") from e
+        comma_parts = [s.strip() for s in other.split(',')]
+        if len(comma_parts) == 1:
+            addr = comma_parts[0]
+            try:
                 symbols[name] = RelSymbol(
                     0,
                     0,
                     int(addr, 16),
                     name
                 )
-            else:
+            except ValueError as e:
+                raise LSTFormatError(i, str(e)) from e
+        else:
+            try:
                 module_id, section_id, offset = comma_parts
+            except ValueError as e:
+                raise LSTFormatError(i, "Expected 1 or 3 commas before colon") from e
+            try:
                 symbols[name] = RelSymbol(
                     int(module_id, 0),
                     int(section_id, 0),
                     int(offset, 16),
                     name
                 )
-        except Exception as e:
-            raise Exception(f"Error on line {i+1}: {e}")
+            except ValueError as e:
+                raise LSTFormatError(i, str(e)) from e
 
     return symbols
 
@@ -353,18 +396,18 @@ class Context:
     version: int
     match_elf2rel: bool
     module_id: int
-    file: FileIO
+    file: BinaryIO
     plf: ELFFile
-    symbols: Dict[str, Symbol]
-    symbols_id: Dict[int, Symbol]
-    lst_symbols: Dict[str, RelSymbol]
+    symbols: dict[str, Symbol]
+    symbols_id: dict[int, Symbol]
+    lst_symbols: dict[str, RelSymbol]
 
-    def __init__(self, version: int, module_id: int, elf_path: str, lst_path: str,
+    def __init__(self, version: int, module_id: int, file: BinaryIO, lst_path: str, *,
                  match_elf2rel: bool):
         self.version = version
         self.match_elf2rel = match_elf2rel
         self.module_id = module_id
-        self.file = open(elf_path, 'rb')
+        self.file = file
         self.plf = ELFFile(self.file)
         self.symbols, self.symbols_id = map_symbols(self.file, self.plf)
         self.lst_symbols = load_lst(lst_path)
@@ -380,7 +423,8 @@ def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
     sec = sym.st_shndx
     if sec == SHN_INDICES.SHN_UNDEF:
         # Symbol in dol or other rel
-        assert sym.name in ctx.lst_symbols, f"Symbol {sym.name} not found"
+        if sym.name not in ctx.lst_symbols:
+            raise MissingSymbolError(sym.name)
         return ctx.lst_symbols[sym.name]
     else:
         # Symbol in this rel
@@ -398,7 +442,7 @@ elf2rel_section_mask = [
 ]
 
 
-def should_include_section(ctx: Context, sec_id: int, ignore_sections: List[str]) -> bool:
+def should_include_section(ctx: Context, sec_id: int, ignore_sections: list[str]) -> bool:
     """Checks if an section should be emitted in the rel"""
 
     section = ctx.plf.get_section(sec_id)
@@ -425,8 +469,8 @@ class BinarySection:
     sec_id: int
     header: Section
     contents: bytes
-    runtime_relocs: List[RelReloc]
-    static_relocs: List[RelReloc]
+    runtime_relocs: list[RelReloc]
+    static_relocs: list[RelReloc]
 
 
 def parse_section(ctx: Context, sec_id: int) -> BinarySection:
@@ -463,12 +507,12 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
 
         # Check when to apply
         skip_runtime = False
-        if t in (RelType.REL24, RelType.REL32):
-            if (
-                target.module_id == ctx.module_id and
-                (ctx.match_elf2rel or sec_id == target.section_id)
-            ):
-                skip_runtime = True
+        if (
+            t in (RelType.REL24, RelType.REL32) and
+            target.module_id == ctx.module_id and
+            (ctx.match_elf2rel or sec_id == target.section_id)
+        ):
+            skip_runtime = True
 
         rel_reloc = RelReloc(
             target.module_id, offs, t, target.section_id, target_offset
@@ -477,18 +521,19 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
             static_relocs.append(rel_reloc)
         else:
             # TODO: other relocations are supported at runtime
-            assert t in (
+            if t not in (
                 RelType.ADDR32, RelType.ADDR16_LO, RelType.ADDR16_HI, RelType.ADDR16_HA,
                 RelType.REL24, RelType.REL14, RelType.REL32
-            ), f"Unsupported relocation type {t}"
+            ):
+                raise UnsupportedRelocationError(t)
 
             runtime_relocs.append(rel_reloc)
 
     return BinarySection(sec_id, sec, dat, runtime_relocs, static_relocs)
 
 
-def build_section_contents(ctx: Context, file_pos: int, sections: List[BinarySection]
-                           ) -> Tuple[int, bytes, Dict[int, int]]:
+def build_section_contents(ctx: Context, file_pos: int, sections: list[BinarySection]
+                           ) -> tuple[int, bytes, dict[int, int]]:
     """Create the linked binary data for the sections"""
 
     dat = bytearray()
@@ -505,7 +550,7 @@ def build_section_contents(ctx: Context, file_pos: int, sections: List[BinarySec
         internal_offsets[section.sec_id] = len(dat)
         file_pos += section.header["sh_size"]
         dat.extend(section.contents)
-    
+
     def early_relocate(t: RelType, sec_id: int, offset: int, target_sec_id: int, target: int):
         """Apply a relocation at compile time to a section"""
 
@@ -535,12 +580,13 @@ def build_section_contents(ctx: Context, file_pos: int, sections: List[BinarySec
         for sec in sections:
             for reloc in sec.runtime_relocs:
                 if reloc.t == RelType.REL24:
-                    early_relocate(reloc.t, sec.sec_id, reloc.offset, unresolved.st_shndx, unresolved.st_value)
+                    early_relocate(reloc.t, sec.sec_id, reloc.offset, unresolved.st_shndx,
+                                   unresolved.st_value)
 
     return file_pos, bytes(dat), offsets
 
 
-def build_section_info(sections: List[Optional[BinarySection]], offsets: Dict[int, int]) -> bytes:
+def build_section_info(sections: list[BinarySection | None], offsets: dict[int, int]) -> bytes:
     """Builds the linked section info table"""
 
     dat = bytearray()
@@ -555,16 +601,16 @@ def build_section_info(sections: List[Optional[BinarySection]], offsets: Dict[in
             executable = False
         info = RelSectionInfo(offset, length, executable)
         dat.extend(info.to_binary())
-    
+
     return bytes(dat)
 
 
-def make_section_relocations(section: BinarySection) -> Dict[int, bytes]:
+def make_section_relocations(section: BinarySection) -> dict[int, bytes]:
     """Creates the binary data for a section's relocations"""
 
     # Get modules referenced
     modules = {r.target_module for r in section.runtime_relocs}
-    
+
     # Make data for modules
     ret = {}
     for module in modules:
@@ -583,10 +629,10 @@ def make_section_relocations(section: BinarySection) -> Dict[int, bytes]:
             delta = rel.offset - offs
 
             # Use nops to get delta in range
-            while delta > 0xffff:
-                dat.extend(RelReloc.encode_reloc(0xffff, RelType.RVL_NONE, 0, 0))
-                delta -= 0xffff
-            
+            while delta > RelReloc.MAX_DELTA:
+                dat.extend(RelReloc.encode_reloc(RelReloc.MAX_DELTA, RelType.RVL_NONE, 0, 0))
+                delta -= RelReloc.MAX_DELTA
+
             # Convert to binary
             dat.extend(rel.to_binary(delta))
 
@@ -599,7 +645,7 @@ def make_section_relocations(section: BinarySection) -> Dict[int, bytes]:
     return ret
 
 
-def group_module_relocations(section_relocs: List[Dict[int, bytes]]) -> Dict[int, bytes]:
+def group_module_relocations(section_relocs: list[dict[int, bytes]]) -> dict[int, bytes]:
     """Split up a list of relocations into binaries for which module they're targetting"""
 
     # Group relocations
@@ -607,16 +653,16 @@ def group_module_relocations(section_relocs: List[Dict[int, bytes]]) -> Dict[int
     for section in section_relocs:
         for module, relocs in section.items():
             ret[module].extend(relocs)
-    for module, relocs in ret.items():
+    for relocs in ret.values():
         relocs.extend(RelReloc.encode_reloc(0, RelType.RVL_STOP, 0, 0))
 
     return dict(ret)
 
 
-def build_relocations(ctx: Context, file_pos: int, module_relocs: Dict[int, bytes]
-                      ) -> Tuple[int, int, int, int, int, bytes]:
+def build_relocations(ctx: Context, file_pos: int, module_relocs: dict[int, bytes]
+                      ) -> tuple[int, int, int, int, int, bytes]:
     """Builds the linked relocation and imp tables
-    
+
     Returns new file position, relocations offset, imp table offset, imp table size, fix size,
     and the combined tables binary"""
 
@@ -625,7 +671,7 @@ def build_relocations(ctx: Context, file_pos: int, module_relocs: Dict[int, byte
 
     # Place imp before relocations if needed
     pre_pad = 0
-    if ctx.version >= 3 or ctx.match_elf2rel:
+    if ctx.version >= RelHeader.FIX_SIZE_MIN_VER or ctx.match_elf2rel:
         # elf2rel aligns this to 8 bytes, and rounds up 0-length padding
         if ctx.match_elf2rel:
             file_pos, pre_pad = align_to_elf2rel(file_pos, 8)
@@ -643,7 +689,7 @@ def build_relocations(ctx: Context, file_pos: int, module_relocs: Dict[int, byte
                 return base + module
             else:
                 return module
-    elif ctx.version >= 3:
+    elif ctx.version >= RelHeader.FIX_SIZE_MIN_VER:
         def module_key(module):
             # Put self second last
             if module == ctx.module_id:
@@ -686,8 +732,8 @@ def build_relocations(ctx: Context, file_pos: int, module_relocs: Dict[int, byte
     return file_pos, reloc_offset, imp_offset, imp_size, fix_size, dat
 
 
-def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
-               match_elf2rel: bool = False, ignore_sections: Optional[List[str]] = None) -> bytes:
+def elf_to_rel(module_id: int, file: BinaryIO, lst_path: str, version: int = 3, *,
+               match_elf2rel: bool = False, ignore_sections: list[str] | None = None) -> bytes:
     """Converts a partially linked elf file into a rel file"""
 
     # Setup default parameters
@@ -695,7 +741,7 @@ def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
         ignore_sections = []
 
     # Build context
-    ctx = Context(version, module_id, elf_path, lst_path, match_elf2rel)
+    ctx = Context(version, module_id, file, lst_path, match_elf2rel=match_elf2rel)
 
     # Give space for header
     file_pos = RelHeader.binary_size(version)
@@ -723,7 +769,7 @@ def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
     # Build relocs
     section_relocs = [make_section_relocations(sec) for sec in sections]
     module_relocs = group_module_relocations(section_relocs)
-    
+
     # Build reloc contents
     file_pos, reloc_offset, imp_offset, imp_size, fix_size, reloc_dat = \
         build_relocations(ctx, file_pos, module_relocs)
@@ -736,14 +782,12 @@ def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
     if ctx.match_elf2rel:
         bss_size = sum(s.header["sh_size"] for s in bss_sections)
     else:
-        assert len(bss_sections) <= 1, f"Multiple bss sections not supported"
-        if len(bss_sections) > 0:
-            bss_size = bss_sections[0].header["sh_size"]
-        else:
-            bss_size = 0
+        if len(bss_sections) > 1:
+            raise MultipleBSSError
+        bss_size = bss_sections[0].header["sh_size"] if len(bss_sections) > 0 else 0
 
     # Calculate alignment
-    if version >= 2:
+    if version >= RelHeader.ALIGN_MIN_VER:
         align = max(
             sec.header["sh_addralign"] for sec in sections
             if sec.header["sh_type"] == "SHT_PROGBITS"
@@ -794,7 +838,7 @@ def elf_to_rel(module_id: int, elf_path: str, lst_path: str, version: int = 3,
     dat.extend(section_info)
     dat.extend(section_contents)
     dat.extend(reloc_dat)
-    
+
     return bytes(dat)
 
 def elf2rel_main():
@@ -804,8 +848,8 @@ def elf2rel_main():
     parser.add_argument("positionals", type=str, nargs='*')
 
     # Non-positional API
-    parser.add_argument("--input-file", "-i", type=str)
-    parser.add_argument("--symbol-file", "-s", type=str)
+    arg_input_file = parser.add_argument("--input-file", "-i", type=str)
+    arg_symbol_file = parser.add_argument("--symbol-file", "-s", type=str)
     parser.add_argument("--output-file", "-o", type=str)
 
     # Optional
@@ -821,13 +865,15 @@ def elf2rel_main():
     if len(positionals) > 0:
         input_file = positionals.pop(0)
     else:
-        assert args.input_file is not None, f"input-file is required"
+        if args.input_file is None:
+            raise ArgumentError(arg_input_file, "input-file is required")
         input_file = args.input_file
 
     if len(positionals) > 0:
         symbol_file = positionals.pop(0)
     else:
-        assert args.symbol_file is not None, f"symbol-file is required"
+        if args.symbol_file is None:
+            raise ArgumentError(arg_symbol_file, "symbol-file is required")
         symbol_file = args.symbol_file
 
     if len(positionals) > 0:
@@ -837,9 +883,11 @@ def elf2rel_main():
     else:
         output_file = input_file.removesuffix(".elf") + ".rel"
 
+    with open(input_file, 'rb') as f:
+        dat = elf_to_rel(args.rel_id, f, symbol_file, args.rel_version,
+                         match_elf2rel=args.match_elf2rel, ignore_sections=args.ignore_sections)
+
     with open(output_file, 'wb') as f:
-        dat = elf_to_rel(args.rel_id, input_file, symbol_file, args.rel_version,
-                         args.match_elf2rel, args.ignore_sections)
         f.write(dat)
 
 if __name__ == '__main__':
