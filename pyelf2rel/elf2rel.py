@@ -351,16 +351,19 @@ def load_lst(filename: str) -> dict[str, RelSymbol]:
             raise LSTFormatError(i, "Expected exactly 1 colon") from e
         comma_parts = [s.strip() for s in other.split(",")]
         if len(comma_parts) == 1:
+            # Dol
             addr = comma_parts[0]
             try:
                 symbols[name] = RelSymbol(0, 0, int(addr, 16), name)
             except ValueError as e:
                 raise LSTFormatError(i, str(e)) from e
         else:
+            # Rel
             try:
                 module_id, section_id, offset = comma_parts
             except ValueError as e:
                 raise LSTFormatError(i, "Expected 1 or 3 commas before colon") from e
+
             try:
                 symbols[name] = RelSymbol(
                     int(module_id, 0), int(section_id, 0), int(offset, 16), name
