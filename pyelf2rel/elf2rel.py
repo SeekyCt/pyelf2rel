@@ -138,13 +138,13 @@ def read_relocs(f: BinaryIO, rela: RelocationSection) -> list[Relocation]:
     relocs = []
     for i in range(rela.num_relocations()):
         # Read in reloc bytes
-        f.seek(rela._offset + (i * rela.entry_size))
+        f.seek(rela._offset + (i * rela.entry_size))  # noqa: SLF001
         dat = f.read(rela.entry_size)
 
         # Parse bytes
         r_offset, r_info, r_addend = unpack(">IIi", dat)
         r_info_sym = r_info >> 8
-        r_info_type = r_info & 0xff
+        r_info_type = r_info & 0xFF
         rel = Relocation(r_offset, r_info_sym, r_info_type, r_addend)
 
         # Add to output
@@ -216,7 +216,7 @@ class RelReloc:
     section: int
     addend: int
 
-    MAX_DELTA = 0xffff
+    MAX_DELTA = 0xFFFF
 
     def to_binary(self, relative_offset: int) -> bytes:
         """Gets the binary representation of the relocation"""
@@ -245,33 +245,33 @@ class RelImp:
 class RelHeader:
     """Container for the rel header struct"""
 
-    module_id: int # u32
-    next_rel: int # u32
-    prev_rel: int # u32
-    num_sections: int # u32
-    section_info_offset: int # u32
-    name_offset: int # u32
-    name_size: int # u32
-    version: int # u32
-    bss_size: int # u32
-    rel_offset: int # u32
-    imp_offset: int # u32
-    imp_size: int # u32
-    prolog_section: int # u8
-    epilog_section: int # u8
-    unresolved_section: int # u8
-    bss_section: int # u8
-    prolog: int # u32
-    epilog: int # u32
-    unresolved: int # u32
+    module_id: int  # u32
+    next_rel: int  # u32
+    prev_rel: int  # u32
+    num_sections: int  # u32
+    section_info_offset: int  # u32
+    name_offset: int  # u32
+    name_size: int  # u32
+    version: int  # u32
+    bss_size: int  # u32
+    rel_offset: int  # u32
+    imp_offset: int  # u32
+    imp_size: int  # u32
+    prolog_section: int  # u8
+    epilog_section: int  # u8
+    unresolved_section: int  # u8
+    bss_section: int  # u8
+    prolog: int  # u32
+    epilog: int  # u32
+    unresolved: int  # u32
 
     # v2
-    align: int | None # u32
-    bss_align: int | None # u32
+    align: int | None  # u32
+    bss_align: int | None  # u32
     ALIGN_MIN_VER = 2
 
     # v3
-    fix_size: int | None # u32
+    fix_size: int | None  # u32
     FIX_SIZE_MIN_VER = 3
 
     def to_binary(self) -> bytes:
@@ -355,16 +355,11 @@ def load_lst(filename: str) -> dict[str, RelSymbol]:
             other, name = colon_parts
         except ValueError as e:
             raise LSTFormatError(i, "Expected exactly 1 colon") from e
-        comma_parts = [s.strip() for s in other.split(',')]
+        comma_parts = [s.strip() for s in other.split(",")]
         if len(comma_parts) == 1:
             addr = comma_parts[0]
             try:
-                symbols[name] = RelSymbol(
-                    0,
-                    0,
-                    int(addr, 16),
-                    name
-                )
+                symbols[name] = RelSymbol(0, 0, int(addr, 16), name)
             except ValueError as e:
                 raise LSTFormatError(i, str(e)) from e
         else:
@@ -374,10 +369,7 @@ def load_lst(filename: str) -> dict[str, RelSymbol]:
                 raise LSTFormatError(i, "Expected 1 or 3 commas before colon") from e
             try:
                 symbols[name] = RelSymbol(
-                    int(module_id, 0),
-                    int(section_id, 0),
-                    int(offset, 16),
-                    name
+                    int(module_id, 0), int(section_id, 0), int(offset, 16), name
                 )
             except ValueError as e:
                 raise LSTFormatError(i, str(e)) from e
@@ -402,8 +394,9 @@ class Context:
     symbols_id: dict[int, Symbol]
     lst_symbols: dict[str, RelSymbol]
 
-    def __init__(self, version: int, module_id: int, file: BinaryIO, lst_path: str, *,
-                 match_elf2rel: bool):
+    def __init__(
+        self, version: int, module_id: int, file: BinaryIO, lst_path: str, *, match_elf2rel: bool
+    ):
         self.version = version
         self.match_elf2rel = match_elf2rel
         self.module_id = module_id
@@ -433,12 +426,12 @@ def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
 
 elf2rel_section_mask = [
     ".init",
-	".text",
-	".ctors",
-	".dtors",
-	".rodata",
-	".data",
-	".bss",
+    ".text",
+    ".ctors",
+    ".dtors",
+    ".rodata",
+    ".data",
+    ".bss",
 ]
 
 
@@ -452,7 +445,7 @@ def should_include_section(ctx: Context, sec_id: int, ignore_sections: list[str]
 
     if ctx.match_elf2rel:
         return any(
-            section.name == val or section.name.startswith(val + '.')
+            section.name == val or section.name.startswith(val + ".")
             for val in elf2rel_section_mask
         )
     else:
@@ -484,7 +477,7 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
         return BinarySection(sec_id, sec, b"", [], [])
 
     # Get relocations
-    rela: RelocationSection = ctx.plf.get_section_by_name('.rela' + sec.name)
+    rela: RelocationSection = ctx.plf.get_section_by_name(".rela" + sec.name)
 
     # Return unchanged data if not relocated
     if rela is None:
@@ -508,22 +501,25 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
         # Check when to apply
         skip_runtime = False
         if (
-            t in (RelType.REL24, RelType.REL32) and
-            target.module_id == ctx.module_id and
-            (ctx.match_elf2rel or sec_id == target.section_id)
+            t in (RelType.REL24, RelType.REL32)
+            and target.module_id == ctx.module_id
+            and (ctx.match_elf2rel or sec_id == target.section_id)
         ):
             skip_runtime = True
 
-        rel_reloc = RelReloc(
-            target.module_id, offs, t, target.section_id, target_offset
-        )
+        rel_reloc = RelReloc(target.module_id, offs, t, target.section_id, target_offset)
         if skip_runtime:
             static_relocs.append(rel_reloc)
         else:
             # TODO: other relocations are supported at runtime
             if t not in (
-                RelType.ADDR32, RelType.ADDR16_LO, RelType.ADDR16_HI, RelType.ADDR16_HA,
-                RelType.REL24, RelType.REL14, RelType.REL32
+                RelType.ADDR32,
+                RelType.ADDR16_LO,
+                RelType.ADDR16_HI,
+                RelType.ADDR16_HA,
+                RelType.REL24,
+                RelType.REL14,
+                RelType.REL32,
             ):
                 raise UnsupportedRelocationError(t)
 
@@ -532,13 +528,14 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
     return BinarySection(sec_id, sec, dat, runtime_relocs, static_relocs)
 
 
-def build_section_contents(ctx: Context, file_pos: int, sections: list[BinarySection]
-                           ) -> tuple[int, bytes, dict[int, int]]:
+def build_section_contents(
+    ctx: Context, file_pos: int, sections: list[BinarySection]
+) -> tuple[int, bytes, dict[int, int]]:
     """Create the linked binary data for the sections"""
 
     dat = bytearray()
-    offsets = {} # positions in file
-    internal_offsets = {} # positions in dat
+    offsets = {}  # positions in file
+    internal_offsets = {}  # positions in dat
     for section in sections:
         if section.header["sh_type"] != "SHT_PROGBITS":
             continue
@@ -556,18 +553,17 @@ def build_section_contents(ctx: Context, file_pos: int, sections: list[BinarySec
 
         # Get instruction
         offs = internal_offsets[sec_id] + offset
-        instr = int.from_bytes(dat[offs:offs+4], 'big')
+        instr = int.from_bytes(dat[offs : offs + 4], "big")
 
         # Apply delta
         delta = (target + internal_offsets[target_sec_id]) - (offset + internal_offsets[sec_id])
         if t == RelType.REL32:
-            instr = delta & 0xffff_ffff
-        else: # Rel24
-            instr |= delta & (0x3ff_fffc)
+            instr = delta & 0xFFFF_FFFF
+        else:  # Rel24
+            instr |= delta & (0x3FF_FFFC)
 
         # Write new instruction
-        dat[offs:offs+4] = int.to_bytes(instr, 4, 'big')
-
+        dat[offs : offs + 4] = int.to_bytes(instr, 4, "big")
 
     # Apply static relocations
     for sec in sections:
@@ -580,8 +576,9 @@ def build_section_contents(ctx: Context, file_pos: int, sections: list[BinarySec
         for sec in sections:
             for reloc in sec.runtime_relocs:
                 if reloc.t == RelType.REL24:
-                    early_relocate(reloc.t, sec.sec_id, reloc.offset, unresolved.st_shndx,
-                                   unresolved.st_value)
+                    early_relocate(
+                        reloc.t, sec.sec_id, reloc.offset, unresolved.st_shndx, unresolved.st_value
+                    )
 
     return file_pos, bytes(dat), offsets
 
@@ -616,8 +613,7 @@ def make_section_relocations(section: BinarySection) -> dict[int, bytes]:
     for module in modules:
         # Get relevant relocs and sort them by offset
         filtered_relocs = sorted(
-            [r for r in section.runtime_relocs if r.target_module == module],
-            key=lambda r: r.offset
+            [r for r in section.runtime_relocs if r.target_module == module], key=lambda r: r.offset
         )
 
         # Convert relocs to binary
@@ -659,8 +655,9 @@ def group_module_relocations(section_relocs: list[dict[int, bytes]]) -> dict[int
     return dict(ret)
 
 
-def build_relocations(ctx: Context, file_pos: int, module_relocs: dict[int, bytes]
-                      ) -> tuple[int, int, int, int, int, bytes]:
+def build_relocations(
+    ctx: Context, file_pos: int, module_relocs: dict[int, bytes]
+) -> tuple[int, int, int, int, int, bytes]:
     """Builds the linked relocation and imp tables
 
     Returns new file position, relocations offset, imp table offset, imp table size, fix size,
@@ -684,12 +681,14 @@ def build_relocations(ctx: Context, file_pos: int, module_relocs: dict[int, byte
     # Sort reloc groups
     base = max(module_relocs.keys())
     if ctx.match_elf2rel:
+
         def module_key(module):
             if module in (0, ctx.module_id):
                 return base + module
             else:
                 return module
     elif ctx.version >= RelHeader.FIX_SIZE_MIN_VER:
+
         def module_key(module):
             # Put self second last
             if module == ctx.module_id:
@@ -732,8 +731,15 @@ def build_relocations(ctx: Context, file_pos: int, module_relocs: dict[int, byte
     return file_pos, reloc_offset, imp_offset, imp_size, fix_size, dat
 
 
-def elf_to_rel(module_id: int, file: BinaryIO, lst_path: str, version: int = 3, *,
-               match_elf2rel: bool = False, ignore_sections: list[str] | None = None) -> bytes:
+def elf_to_rel(
+    module_id: int,
+    file: BinaryIO,
+    lst_path: str,
+    version: int = 3,
+    *,
+    match_elf2rel: bool = False,
+    ignore_sections: list[str] | None = None,
+) -> bytes:
     """Converts a partially linked elf file into a rel file"""
 
     # Setup default parameters
@@ -749,9 +755,7 @@ def elf_to_rel(module_id: int, file: BinaryIO, lst_path: str, version: int = 3, 
 
     # Parse sections
     all_sections = [
-        parse_section(ctx, sec_id)
-        if should_include_section(ctx, sec_id, ignore_sections)
-        else None
+        parse_section(ctx, sec_id) if should_include_section(ctx, sec_id, ignore_sections) else None
         for sec_id in range(ctx.plf.num_sections())
     ]
     sections = [sec for sec in all_sections if sec is not None]
@@ -771,14 +775,12 @@ def elf_to_rel(module_id: int, file: BinaryIO, lst_path: str, version: int = 3, 
     module_relocs = group_module_relocations(section_relocs)
 
     # Build reloc contents
-    file_pos, reloc_offset, imp_offset, imp_size, fix_size, reloc_dat = \
-        build_relocations(ctx, file_pos, module_relocs)
+    file_pos, reloc_offset, imp_offset, imp_size, fix_size, reloc_dat = build_relocations(
+        ctx, file_pos, module_relocs
+    )
 
     # Find bss section
-    bss_sections = [
-        sec for sec in sections
-        if sec.header["sh_type"] == "SHT_NOBITS"
-    ]
+    bss_sections = [sec for sec in sections if sec.header["sh_type"] == "SHT_NOBITS"]
     if ctx.match_elf2rel:
         bss_size = sum(s.header["sh_size"] for s in bss_sections)
     else:
@@ -789,7 +791,8 @@ def elf_to_rel(module_id: int, file: BinaryIO, lst_path: str, version: int = 3, 
     # Calculate alignment
     if version >= RelHeader.ALIGN_MIN_VER:
         align = max(
-            sec.header["sh_addralign"] for sec in sections
+            sec.header["sh_addralign"]
+            for sec in sections
             if sec.header["sh_type"] == "SHT_PROGBITS"
         )
 
@@ -841,11 +844,12 @@ def elf_to_rel(module_id: int, file: BinaryIO, lst_path: str, version: int = 3, 
 
     return bytes(dat)
 
+
 def elf2rel_main():
     parser = ArgumentParser()
 
     # Positional API - boost::program_options behaves differently to argparse
-    parser.add_argument("positionals", type=str, nargs='*')
+    parser.add_argument("positionals", type=str, nargs="*")
 
     # Non-positional API
     arg_input_file = parser.add_argument("--input-file", "-i", type=str)
@@ -855,8 +859,8 @@ def elf2rel_main():
     # Optional
     parser.add_argument("--rel-id", type=lambda x: int(x, 0), default=0x1000)
     parser.add_argument("--rel-version", type=int, default=3)
-    parser.add_argument("--match-elf2rel", action='store_true')
-    parser.add_argument("--ignore-sections", nargs='+', default=[])
+    parser.add_argument("--match-elf2rel", action="store_true")
+    parser.add_argument("--ignore-sections", nargs="+", default=[])
 
     args = parser.parse_args()
 
@@ -883,12 +887,19 @@ def elf2rel_main():
     else:
         output_file = input_file.removesuffix(".elf") + ".rel"
 
-    with open(input_file, 'rb') as f:
-        dat = elf_to_rel(args.rel_id, f, symbol_file, args.rel_version,
-                         match_elf2rel=args.match_elf2rel, ignore_sections=args.ignore_sections)
+    with open(input_file, "rb") as f:
+        dat = elf_to_rel(
+            args.rel_id,
+            f,
+            symbol_file,
+            args.rel_version,
+            match_elf2rel=args.match_elf2rel,
+            ignore_sections=args.ignore_sections,
+        )
 
-    with open(output_file, 'wb') as f:
+    with open(output_file, "wb") as f:
         f.write(dat)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     elf2rel_main()

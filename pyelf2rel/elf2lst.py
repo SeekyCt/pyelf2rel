@@ -118,31 +118,32 @@ def elf_to_lst(module_id: int, file: BinaryIO) -> str:
         if sym.st_shndx != SHN_INDICES.SHN_UNDEF
     ]
 
-    return '\n'.join(s.to_lst() for s in rel_symbols)
+    return "\n".join(s.to_lst() for s in rel_symbols)
 
 
 def elf2lst_main():
     parser = ArgumentParser()
     parser.add_argument("lst_path", type=str, help="Output lst path")
-    arg_inputs = parser.add_argument("inputs", type=str, nargs='+',
-                                     help="Input module id and elf path pairs")
+    arg_inputs = parser.add_argument(
+        "inputs", type=str, nargs="+", help="Input module id and elf path pairs"
+    )
     args = parser.parse_args()
 
     if len(args.inputs) % 2 != 0:
         raise ArgumentError(arg_inputs, "Inputs require a module id and path for each entry")
 
     def pairwise(seq: list):
-        return zip(*[iter(seq)]*2)
+        return zip(*[iter(seq)] * 2)
 
     txts = []
     for module_id, elf_path in pairwise(args.inputs):
-        with open(elf_path, 'rb') as f:
+        with open(elf_path, "rb") as f:
             txt = f"// {elf_path}\n" + elf_to_lst(module_id, f)
         txts.append(txt)
 
-    with open(args.lst_path, 'w') as f:
-        f.write('\n\n'.join(txts))
+    with open(args.lst_path, "w") as f:
+        f.write("\n\n".join(txts))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     elf2lst_main()
