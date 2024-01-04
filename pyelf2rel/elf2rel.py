@@ -23,11 +23,6 @@ if TYPE_CHECKING:
 ###########
 
 
-class MultipleBSSError(Exception):
-    def __init__(self):
-        super().__init__("Multiple bss sections not supported")
-
-
 class LSTFormatError(Exception):
     def __init__(self, line: int, exception: str):
         super().__init__(f"Error on line {line+1}: {exception}")
@@ -780,12 +775,7 @@ def elf_to_rel(
 
     # Find bss section
     bss_sections = [sec for sec in sections if sec.header["sh_type"] == "SHT_NOBITS"]
-    if ctx.match_elf2rel:
-        bss_size = sum(s.header["sh_size"] for s in bss_sections)
-    else:
-        if len(bss_sections) > 1:
-            raise MultipleBSSError
-        bss_size = bss_sections[0].header["sh_size"] if len(bss_sections) > 0 else 0
+    bss_size = sum(s.header["sh_size"] for s in bss_sections)
 
     # Calculate alignment
     if version >= RelHeader.ALIGN_MIN_VER:
