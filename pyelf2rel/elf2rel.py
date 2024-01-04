@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import IntEnum, unique
 from functools import cached_property
 from struct import pack, unpack
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
@@ -29,8 +29,9 @@ class LSTFormatError(Exception):
 
 
 class DuplicateSymbolError(Exception):
-    def __init__(self, symbol: str):
-        super().__init__(f"Duplicate symbol {symbol}")
+    def __init__(self, symbols: Iterable[str]):
+        sym_str = ", ".join(symbols)
+        super().__init__(f"Duplicate symbol(s): {sym_str}")
 
 
 class MissingSymbolError(Exception):
@@ -95,6 +96,7 @@ def map_symbols(f: BinaryIO, plf: ELFFile) -> tuple[dict[str, Symbol], dict[int,
     # Parse symbol table
     symbols = {}
     symbols_id = {}
+    duplicates = set()
     for i in range(symtab.num_symbols()):
         # Read in symbol bytes
         f.seek(symtab["sh_offset"] + (i * symtab["sh_entsize"]))
@@ -106,11 +108,18 @@ def map_symbols(f: BinaryIO, plf: ELFFile) -> tuple[dict[str, Symbol], dict[int,
         sym = Symbol(name, st_value, st_size, st_info, st_other, st_shndx)
 
         # Add to dicts
-        if sym.name != "" and sym.st_bind == ENUM_ST_INFO_BIND["STB_GLOBAL"]:
+        if (
+            sym.name != ""
+            and sym.st_bind == ENUM_ST_INFO_BIND["STB_GLOBAL"]
+            and sym.st_shndx != SHN_INDICES.SHN_UNDEF
+        ):
             if sym.name in symbols:
-                raise DuplicateSymbolError(sym.name)
+                duplicates.add(sym.name)
             symbols[sym.name] = sym
         symbols_id[i] = sym
+
+    if len(duplicates) > 0:
+        raise DuplicateSymbolError(duplicates)
 
     return symbols, symbols_id
 
@@ -401,6 +410,9 @@ class Context:
         self.plf = ELFFile(self.file)
         self.symbols, self.symbols_id = map_symbols(self.file, self.plf)
         self.lst_symbols = load_lst(lst_path)
+        overlap = self.symbols.keys() & self.lst_symbols.keys()
+        if len(overlap) > 0:
+            raise DuplicateSymbolError(overlap)
 
 
 def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
