@@ -10,7 +10,7 @@ def align_to(offs: int, align: int) -> tuple[int, int]:
     return new_offs, padding
 
 
-def align_to_elf2rel(offs: int, align: int) -> tuple[int, int]:
+def align_to_ttyd_tools(offs: int, align: int) -> tuple[int, int]:
     """Variant of align_to where padding of 0 changes to padding of n instead"""
 
     padding = align - (offs % align)

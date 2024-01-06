@@ -12,7 +12,7 @@ from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_ST_INFO_BIND
 
-from pyelf2rel.align import align_to, align_to_elf2rel
+from pyelf2rel.align import align_to, align_to_ttyd_tools
 from pyelf2rel.error import (
     DuplicateSymbolError,
     LSTFormatError,
@@ -353,7 +353,7 @@ class Context:
     """Utility struct for passing common data between the conversion functions"""
 
     version: int
-    match_elf2rel: bool
+    match_ttyd_tools: bool
     module_id: int
     file: BinaryIO
     plf: ELFFile
@@ -362,10 +362,10 @@ class Context:
     lst_symbols: dict[str, RelSymbol]
 
     def __init__(
-        self, version: int, module_id: int, file: BinaryIO, lst_path: str, *, match_elf2rel: bool
+        self, version: int, module_id: int, file: BinaryIO, lst_path: str, *, match_ttyd_tools: bool
     ):
         self.version = version
-        self.match_elf2rel = match_elf2rel
+        self.match_ttyd_tools = match_ttyd_tools
         self.module_id = module_id
         self.file = file
         self.plf = ELFFile(self.file)
@@ -394,7 +394,7 @@ def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
         return RelSymbol(ctx.module_id, sec, sym.st_value, sym.name)
 
 
-elf2rel_section_mask = [
+ttyd_tools_section_mask = [
     ".init",
     ".text",
     ".ctors",
@@ -413,10 +413,10 @@ def should_include_section(ctx: Context, sec_id: int, ignore_sections: list[str]
     if section.name in ignore_sections:
         return False
 
-    if ctx.match_elf2rel:
+    if ctx.match_ttyd_tools:
         return any(
             section.name == val or section.name.startswith(val + ".")
-            for val in elf2rel_section_mask
+            for val in ttyd_tools_section_mask
         )
     else:
         return (
@@ -473,7 +473,7 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
         if (
             t in (RelType.REL24, RelType.REL32)
             and target.module_id == ctx.module_id
-            and (ctx.match_elf2rel or sec_id == target.section_id)
+            and (ctx.match_ttyd_tools or sec_id == target.section_id)
         ):
             skip_runtime = True
 
@@ -541,7 +541,7 @@ def build_section_contents(
             early_relocate(reloc.t, sec.sec_id, reloc.offset, reloc.section, reloc.addend)
 
     # Patch runtime reloc branches to _unresolved
-    if not ctx.match_elf2rel:
+    if not ctx.match_ttyd_tools:
         unresolved = ctx.symbols["_unresolved"]
         for sec in sections:
             for reloc in sec.runtime_relocs:
@@ -638,10 +638,10 @@ def build_relocations(
 
     # Place imp before relocations if needed
     pre_pad = 0
-    if ctx.version >= RelHeader.FIX_SIZE_MIN_VER or ctx.match_elf2rel:
-        # elf2rel aligns this to 8 bytes, and rounds up 0-length padding
-        if ctx.match_elf2rel:
-            file_pos, pre_pad = align_to_elf2rel(file_pos, 8)
+    if ctx.version >= RelHeader.FIX_SIZE_MIN_VER or ctx.match_ttyd_tools:
+        # ttyd-tools aligns this to 8 bytes, and rounds up 0-length padding
+        if ctx.match_ttyd_tools:
+            file_pos, pre_pad = align_to_ttyd_tools(file_pos, 8)
 
         imp_offset = file_pos
         file_pos += imp_size
@@ -650,7 +650,7 @@ def build_relocations(
 
     # Sort reloc groups
     base = max(module_relocs.keys())
-    if ctx.match_elf2rel:
+    if ctx.match_ttyd_tools:
 
         def module_key(module):
             if module in (0, ctx.module_id):
@@ -707,7 +707,7 @@ def elf_to_rel(
     lst_path: str,
     version: int = 3,
     *,
-    match_elf2rel: bool = False,
+    match_ttyd_tools: bool = False,
     ignore_sections: list[str] | None = None,
 ) -> bytes:
     """Converts a partially linked elf file into a rel file"""
@@ -717,7 +717,7 @@ def elf_to_rel(
         ignore_sections = []
 
     # Build context
-    ctx = Context(version, module_id, file, lst_path, match_elf2rel=match_elf2rel)
+    ctx = Context(version, module_id, file, lst_path, match_ttyd_tools=match_ttyd_tools)
 
     # Give space for header
     file_pos = RelHeader.binary_size(version)
@@ -824,7 +824,7 @@ def main():
     # Optional
     parser.add_argument("--rel-id", type=lambda x: int(x, 0), default=0x1000)
     parser.add_argument("--rel-version", type=int, default=3)
-    parser.add_argument("--match-elf2rel", action="store_true")
+    parser.add_argument("--match-ttyd-tools", action="store_true")
     parser.add_argument("--ignore-sections", nargs="+", default=[])
 
     args = parser.parse_args()
@@ -858,7 +858,7 @@ def main():
             f,
             symbol_file,
             args.rel_version,
-            match_elf2rel=args.match_elf2rel,
+            match_ttyd_tools=args.match_ttyd_tools,
             ignore_sections=args.ignore_sections,
         )
 
