@@ -203,7 +203,9 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
 def build_section_contents(
     ctx: Context, file_pos: int, sections: list[BinarySection]
 ) -> tuple[int, bytes, dict[int, int]]:
-    """Create the linked binary data for the sections"""
+    """Create the linked binary data for the sections
+
+    Returns new file position, linked data, and the file offsets of each section"""
 
     dat = bytearray()
     offsets = {}  # positions in file
@@ -275,7 +277,9 @@ def build_section_info(sections: list[BinarySection | None], offsets: dict[int, 
 
 
 def make_section_relocations(section: BinarySection) -> dict[int, bytes]:
-    """Creates the binary data for a section's relocations"""
+    """Creates the binary data for a section's relocations
+
+    Returns a map from module id to the data targetting that module"""
 
     # Get modules referenced
     modules = {r.target_module for r in section.runtime_relocs}

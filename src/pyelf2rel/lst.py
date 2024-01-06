@@ -1,3 +1,7 @@
+"""
+    LST symbol map loading and encoding
+"""
+
 from __future__ import annotations
 
 from pyelf2rel.error import LSTColonError, LSTCommaError, LSTFormatError

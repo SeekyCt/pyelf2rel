@@ -1,3 +1,7 @@
+"""
+    Faster pyelftools substitutes
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,7 +32,7 @@ class Symbol:
 
 
 def read_symbols(f: BinaryIO, plf: ELFFile) -> list[Symbol]:
-    """Loads symbols from an ELF file into dicts mapped by name and id"""
+    """Loads symbols from the symtab section of an ELF file"""
 
     # Get symbol table
     symtab: SymbolTableSection = plf.get_section_by_name(".symtab")
