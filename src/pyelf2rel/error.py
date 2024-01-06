@@ -2,6 +2,8 @@
     Project-specific errors
 """
 
+from __future__ import annotations
+
 from typing import Iterable
 
 
@@ -12,18 +14,19 @@ class DuplicateSymbolError(Exception):
 
 
 class LSTFormatError(Exception):
-    def __init__(self, exception: str):
-        super().__init__(f"LST format error: {exception}")
+    def __init__(self, exception: str, line_num: int | None):
+        line = f" on line {line_num}" if line_num else ""
+        super().__init__(f"LST format error{line}: {exception}")
 
 
 class LSTColonError(LSTFormatError):
-    def __init__(self):
-        super().__init__("Expected exactly 1 colon")
+    def __init__(self, line_num: int | None):
+        super().__init__("Expected exactly 1 colon", line_num)
 
 
 class LSTCommaError(LSTFormatError):
-    def __init__(self):
-        super().__init__("Expected 1 or 3 commas before colon")
+    def __init__(self, line_num: int | None):
+        super().__init__("Expected 1 or 3 commas before colon", line_num)
 
 
 class MissingSymbolError(Exception):

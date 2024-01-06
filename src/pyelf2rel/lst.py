@@ -21,7 +21,7 @@ def encode_lst(symbols: list[RelSymbol]) -> str:
     return "\n".join(encode_lst_symbol(s) for s in symbols)
 
 
-def decode_lst_symbol(line: str) -> tuple[str, RelSymbol]:
+def decode_lst_symbol(line: str, line_num: int | None = None) -> tuple[str, RelSymbol]:
     # Try parse
     # Dol - addr:name
     # Rel - moduleId,sectionId,offset:name
@@ -29,7 +29,7 @@ def decode_lst_symbol(line: str) -> tuple[str, RelSymbol]:
     try:
         other, name = colon_parts
     except ValueError as e:
-        raise LSTColonError from e
+        raise LSTColonError(line_num) from e
     comma_parts = [s.strip() for s in other.split(",")]
     if len(comma_parts) == 1:
         # Dol
@@ -37,18 +37,18 @@ def decode_lst_symbol(line: str) -> tuple[str, RelSymbol]:
         try:
             return name, RelSymbol(0, 0, int(addr, 16), name)
         except ValueError as e:
-            raise LSTFormatError(str(e)) from e
+            raise LSTFormatError(str(e), line_num) from e
     else:
         # Rel
         try:
             module_id, section_id, offset = comma_parts
         except ValueError as e:
-            raise LSTCommaError from e
+            raise LSTCommaError(line_num) from e
 
         try:
             return name, RelSymbol(int(module_id, 0), int(section_id, 0), int(offset, 16), name)
         except ValueError as e:
-            raise LSTFormatError(str(e)) from e
+            raise LSTFormatError(str(e), line_num) from e
 
 
 def decode_lst(txt: str) -> dict[str, RelSymbol]:
@@ -62,11 +62,7 @@ def decode_lst(txt: str) -> dict[str, RelSymbol]:
         if strip.startswith("/") or len(strip) == 0:
             continue
 
-        try:
-            name, sym = decode_lst_symbol(strip)
-            symbols[name] = sym
-        except LSTFormatError as e:
-            e.add_note(f"On line {i+1}")
-            raise
+        name, sym = decode_lst_symbol(strip, i + 1)
+        symbols[name] = sym
 
     return symbols
