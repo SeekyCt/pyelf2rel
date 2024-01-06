@@ -8,7 +8,7 @@ from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_ST_INFO_BIND
 
 from pyelf2rel.elf import read_symbols
-from pyelf2rel.lst import encode_lst
+from pyelf2rel.lst import dump_lst
 from pyelf2rel.rel import RelSymbol
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ def load_elf(module_id: int, file: BinaryIO) -> str:
         )
     ]
 
-    return encode_lst(rel_symbols)
+    return dump_lst(rel_symbols)
 
 
 def main():

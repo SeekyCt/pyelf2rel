@@ -8,20 +8,20 @@ from pyelf2rel.error import LSTColonError, LSTCommaError, LSTFormatError
 from pyelf2rel.rel import RelSymbol
 
 
-def encode_lst_symbol(sym: RelSymbol) -> str:
+def dump_lst_symbol(sym: RelSymbol) -> str:
     if sym.module_id == 0:
         return f"{sym.offset:08x}:{sym.name}"
     else:
         return f"{sym.module_id},{sym.section_id},{sym.offset:08x}:{sym.name}"
 
 
-def encode_lst(symbols: list[RelSymbol]) -> str:
+def dump_lst(symbols: list[RelSymbol]) -> str:
     """Creates an LST map of a list of symbols"""
 
-    return "\n".join(encode_lst_symbol(s) for s in symbols)
+    return "\n".join(dump_lst_symbol(s) for s in symbols)
 
 
-def decode_lst_symbol(line: str, line_num: int | None = None) -> tuple[str, RelSymbol]:
+def load_lst_symbol(line: str, line_num: int | None = None) -> tuple[str, RelSymbol]:
     # Try parse
     # Dol - addr:name
     # Rel - moduleId,sectionId,offset:name
@@ -51,7 +51,7 @@ def decode_lst_symbol(line: str, line_num: int | None = None) -> tuple[str, RelS
             raise LSTFormatError(str(e), line_num) from e
 
 
-def decode_lst(txt: str) -> dict[str, RelSymbol]:
+def load_lst(txt: str) -> dict[str, RelSymbol]:
     """Parses an LST symbol map"""
 
     # Parse lines
@@ -62,7 +62,7 @@ def decode_lst(txt: str) -> dict[str, RelSymbol]:
         if strip.startswith("/") or len(strip) == 0:
             continue
 
-        name, sym = decode_lst_symbol(strip, i + 1)
+        name, sym = load_lst_symbol(strip, i + 1)
         symbols[name] = sym
 
     return symbols

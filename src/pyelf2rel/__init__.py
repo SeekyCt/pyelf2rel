@@ -5,7 +5,7 @@ from pyelf2rel.error import (
     MissingSymbolError,
     UnsupportedRelocationError,
 )
-from pyelf2rel.lst import decode_lst, decode_lst_symbol, encode_lst, encode_lst_symbol
+from pyelf2rel.lst import load_lst, load_lst_symbol, dump_lst, dump_lst_symbol
 from pyelf2rel.rel import RelSymbol
 
 __all__ = [
@@ -14,9 +14,9 @@ __all__ = [
     "LSTFormatError",
     "MissingSymbolError",
     "UnsupportedRelocationError",
-    "decode_lst",
-    "decode_lst_symbol",
-    "encode_lst",
-    "encode_lst_symbol",
+    "load_lst",
+    "load_lst_symbol",
+    "dump_lst",
+    "dump_lst_symbol",
     "RelSymbol",
 ]
