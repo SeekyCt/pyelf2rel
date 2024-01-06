@@ -34,22 +34,15 @@ class Symbol:
 def read_symbols(f: BinaryIO, plf: ELFFile) -> list[Symbol]:
     """Loads symbols from the symtab section of an ELF file"""
 
-    # Get symbol table
     symtab: SymbolTableSection = plf.get_section_by_name(".symtab")
-
-    # Parse symbol table
     ret = []
     for i in range(symtab.num_symbols()):
-        # Read in symbol bytes
         f.seek(symtab["sh_offset"] + (i * symtab["sh_entsize"]))
         dat = f.read(symtab["sh_entsize"])
 
-        # Parse bytes
         st_name, st_value, st_size, st_info, st_other, st_shndx = unpack(">IIIBBH", dat)
         name = symtab.stringtable.get_string(st_name)
-        sym = Symbol(name, st_value, st_size, st_info, st_other, st_shndx)
-
-        ret.append(sym)
+        ret.append(Symbol(name, st_value, st_size, st_info, st_other, st_shndx))
 
     return ret
 
@@ -67,20 +60,15 @@ class Relocation:
 def read_relocs(f: BinaryIO, rela: RelocationSection) -> list[Relocation]:
     """Loads relocations from a rela section in an ELF file"""
 
-    # Iterate relocations
     relocs = []
     for i in range(rela.num_relocations()):
-        # Read in reloc bytes
         f.seek(rela._offset + (i * rela.entry_size))  # noqa: SLF001
-        dat = f.read(rela.entry_size)
+        rela_entry = f.read(rela.entry_size)
 
-        # Parse bytes
-        r_offset, r_info, r_addend = unpack(">IIi", dat)
+        r_offset, r_info, r_addend = unpack(">IIi", rela_entry)
         r_info_sym = r_info >> 8
         r_info_type = r_info & 0xFF
-        rel = Relocation(r_offset, r_info_sym, r_info_type, r_addend)
 
-        # Add to output
-        relocs.append(rel)
+        relocs.append(Relocation(r_offset, r_info_sym, r_info_type, r_addend))
 
     return relocs
