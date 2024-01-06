@@ -9,7 +9,7 @@ from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_ST_INFO_BIND
 
-from pyelf2rel.align import align_to, align_to_ttyd_tools
+from pyelf2rel.util import align_to, align_to_ttyd_tools
 from pyelf2rel.elf import Symbol, read_relocs, read_symbols
 from pyelf2rel.error import (
     DuplicateSymbolError,
