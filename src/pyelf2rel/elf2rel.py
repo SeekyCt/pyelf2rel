@@ -16,7 +16,7 @@ from pyelf2rel.error import (
     MissingSymbolError,
     UnsupportedRelocationError,
 )
-from pyelf2rel.lst import load_lst
+from pyelf2rel.lst import decode_lst
 from pyelf2rel.rel import RelHeader, RelImp, RelReloc, RelSectionInfo, RelSymbol, RelType
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ class Context:
         self.symbol_map = map_symbols(self.symbols)
         with open(lst_path) as f:
             lst_txt = f.read()
-        self.lst_symbols = load_lst(lst_txt)
+        self.lst_symbols = decode_lst(lst_txt)
         overlap = self.symbol_map.keys() & self.lst_symbols.keys()
         if len(overlap) > 0:
             raise DuplicateSymbolError(overlap)

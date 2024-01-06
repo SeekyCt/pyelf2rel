@@ -21,7 +21,7 @@ def encode_lst(symbols: list[RelSymbol]) -> str:
     return "\n".join(encode_lst_symbol(s) for s in symbols)
 
 
-def load_lst_symbol(line: str) -> tuple[str, RelSymbol]:
+def decode_lst_symbol(line: str) -> tuple[str, RelSymbol]:
     # Try parse
     # Dol - addr:name
     # Rel - moduleId,sectionId,offset:name
@@ -51,7 +51,7 @@ def load_lst_symbol(line: str) -> tuple[str, RelSymbol]:
             raise LSTFormatError(str(e)) from e
 
 
-def load_lst(txt: str) -> dict[str, RelSymbol]:
+def decode_lst(txt: str) -> dict[str, RelSymbol]:
     """Parses an LST symbol map"""
 
     # Parse lines
@@ -63,7 +63,7 @@ def load_lst(txt: str) -> dict[str, RelSymbol]:
             continue
 
         try:
-            name, sym = load_lst_symbol(strip)
+            name, sym = decode_lst_symbol(strip)
             symbols[name] = sym
         except LSTFormatError as e:
             e.add_note(f"On line {i+1}")
