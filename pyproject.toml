@@ -37,6 +37,9 @@ Issues = "https://github.com/SeekyCt/pyelf2rel/issues"
 elf2rel = 'pyelf2rel.elf2rel:main'
 elf2lst = 'pyelf2rel.elf2rel:main'
 
+[tool.mypy]
+ignore_missing_imports = true
+
 [tool.hatch.version]
 source = "vcs"
 

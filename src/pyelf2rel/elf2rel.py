@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import IntEnum, unique
 from functools import cached_property
 from struct import pack, unpack
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
@@ -615,14 +615,14 @@ def group_module_relocations(section_relocs: list[dict[int, bytes]]) -> dict[int
     """Split up a list of relocations into binaries for which module they're targetting"""
 
     # Group relocations
-    ret = defaultdict(bytearray)
+    ret: dict[int, bytearray] = defaultdict(bytearray)
     for section in section_relocs:
         for module, relocs in section.items():
             ret[module].extend(relocs)
     for relocs in ret.values():
         relocs.extend(RelReloc.encode_reloc(0, RelType.RVL_STOP, 0, 0))
 
-    return dict(ret)
+    return {module: bytes(dat) for module, dat in ret.items()}
 
 
 def build_relocations(
@@ -650,16 +650,19 @@ def build_relocations(
 
     # Sort reloc groups
     base = max(module_relocs.keys())
+    module_key: Callable[[int], int] | None
     if ctx.match_ttyd_tools:
 
-        def module_key(module):
+        def ttyd_tools_module_key(module):
             if module in (0, ctx.module_id):
                 return base + module
             else:
                 return module
+
+        module_key = ttyd_tools_module_key
     elif ctx.version >= RelHeader.FIX_SIZE_MIN_VER:
 
-        def module_key(module):
+        def fix_size_module_key(module):
             # Put self second last
             if module == ctx.module_id:
                 return base + 1
@@ -668,6 +671,8 @@ def build_relocations(
                 return base + 2
             # Put others in order of module id
             return module
+
+        module_key = fix_size_module_key
     else:
         module_key = None
     modules = sorted(module_relocs.keys(), key=module_key)
