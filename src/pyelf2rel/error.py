@@ -12,12 +12,12 @@ class LSTFormatError(Exception):
         super().__init__(f"LST format error: {exception}")
 
 
-class LSTColonError(Exception):
+class LSTColonError(LSTFormatError):
     def __init__(self):
         super().__init__("Expected exactly 1 colon")
 
 
-class LSTCommaError(Exception):
+class LSTCommaError(LSTFormatError):
     def __init__(self):
         super().__init__("Expected 1 or 3 commas before colon")
 
