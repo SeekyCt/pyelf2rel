@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from elftools.elf.constants import SHN_INDICES
 from elftools.elf.elffile import ELFFile
 
-from pyelf2rel.elf import map_symbols
+from pyelf2rel.elf import read_symbols
 from pyelf2rel.lst import encode_lst
 from pyelf2rel.rel import RelSymbol
 
@@ -18,11 +18,11 @@ def elf_to_lst(module_id: int, file: BinaryIO) -> str:
     """Creates an LST map of the symbols in an ELF file"""
 
     plf = ELFFile(file)
-    symbols, _ = map_symbols(file, plf)
+    symbols = read_symbols(file, plf)
 
     rel_symbols = [
         RelSymbol(module_id, sym.st_shndx, sym.st_value, sym.name)
-        for sym in symbols.values()
+        for sym in symbols
         if sym.st_shndx != SHN_INDICES.SHN_UNDEF
     ]
 

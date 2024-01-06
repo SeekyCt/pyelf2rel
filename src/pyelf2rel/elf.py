@@ -5,11 +5,6 @@ from functools import cached_property
 from struct import unpack
 from typing import TYPE_CHECKING, BinaryIO
 
-from elftools.elf.constants import SHN_INDICES
-from elftools.elf.enums import ENUM_ST_INFO_BIND
-
-from pyelf2rel.error import DuplicateSymbolError
-
 if TYPE_CHECKING:
     from elftools.elf.elffile import ELFFile
     from elftools.elf.relocation import RelocationSection
@@ -32,16 +27,14 @@ class Symbol:
         return self.st_info >> 4
 
 
-def map_symbols(f: BinaryIO, plf: ELFFile) -> tuple[dict[str, Symbol], dict[int, Symbol]]:
+def read_symbols(f: BinaryIO, plf: ELFFile) -> list[Symbol]:
     """Loads symbols from an ELF file into dicts mapped by name and id"""
 
     # Get symbol table
     symtab: SymbolTableSection = plf.get_section_by_name(".symtab")
 
     # Parse symbol table
-    symbols = {}
-    symbols_id = {}
-    duplicates = set()
+    ret = []
     for i in range(symtab.num_symbols()):
         # Read in symbol bytes
         f.seek(symtab["sh_offset"] + (i * symtab["sh_entsize"]))
@@ -52,21 +45,9 @@ def map_symbols(f: BinaryIO, plf: ELFFile) -> tuple[dict[str, Symbol], dict[int,
         name = symtab.stringtable.get_string(st_name)
         sym = Symbol(name, st_value, st_size, st_info, st_other, st_shndx)
 
-        # Add to dicts
-        if (
-            sym.name != ""
-            and sym.st_bind == ENUM_ST_INFO_BIND["STB_GLOBAL"]
-            and sym.st_shndx != SHN_INDICES.SHN_UNDEF
-        ):
-            if sym.name in symbols:
-                duplicates.add(sym.name)
-            symbols[sym.name] = sym
-        symbols_id[i] = sym
+        ret.append(sym)
 
-    if len(duplicates) > 0:
-        raise DuplicateSymbolError(duplicates)
-
-    return symbols, symbols_id
+    return ret
 
 
 @dataclass(frozen=True)

@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Callable
 
 from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
+from elftools.elf.enums import ENUM_ST_INFO_BIND
 
 from pyelf2rel.align import align_to, align_to_ttyd_tools
-from pyelf2rel.elf import Symbol, map_symbols, read_relocs
+from pyelf2rel.elf import Symbol, read_relocs, read_symbols
 from pyelf2rel.error import (
     DuplicateSymbolError,
     MissingSymbolError,
@@ -25,11 +26,6 @@ if TYPE_CHECKING:
     from elftools.elf.sections import Section
 
 
-##############
-# Conversion #
-##############
-
-
 class Context:
     """Utility struct for passing common data between the conversion functions"""
 
@@ -38,8 +34,8 @@ class Context:
     module_id: int
     file: BinaryIO
     plf: ELFFile
-    symbols: dict[str, Symbol]
-    symbols_id: dict[int, Symbol]
+    symbol_map: dict[str, Symbol]
+    symbols: list[Symbol]
     lst_symbols: dict[str, RelSymbol]
 
     def __init__(
@@ -50,20 +46,43 @@ class Context:
         self.module_id = module_id
         self.file = file
         self.plf = ELFFile(self.file)
-        self.symbols, self.symbols_id = map_symbols(self.file, self.plf)
+        self.symbols = read_symbols(self.file, self.plf)
+        self.symbol_map = map_symbols(self.symbols)
         with open(lst_path) as f:
             lst_txt = f.read()
         self.lst_symbols = load_lst(lst_txt)
-        overlap = self.symbols.keys() & self.lst_symbols.keys()
+        overlap = self.symbol_map.keys() & self.lst_symbols.keys()
         if len(overlap) > 0:
             raise DuplicateSymbolError(overlap)
+
+
+def map_symbols(symbols: list[Symbol]) -> dict[str, Symbol]:
+    """Creates a dict of global symbols by name"""
+
+    ret = {}
+    duplicates = set()
+    for sym in symbols:
+        if (
+            sym.name != ""
+            and sym.st_bind == ENUM_ST_INFO_BIND["STB_GLOBAL"]
+            and sym.st_shndx != SHN_INDICES.SHN_UNDEF
+        ):
+            if sym.name in ret:
+                duplicates.add(sym.name)
+            else:
+                ret[sym.name] = sym
+
+    if len(duplicates) > 0:
+        raise DuplicateSymbolError(duplicates)
+
+    return ret
 
 
 def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
     """Finds a symbol by id"""
 
     # Get symbol
-    sym = ctx.symbols_id[sym_id]
+    sym = ctx.symbols[sym_id]
 
     # Find symbol location
     sec = sym.st_shndx
@@ -225,7 +244,7 @@ def build_section_contents(
 
     # Patch runtime reloc branches to _unresolved
     if not ctx.match_ttyd_tools:
-        unresolved = ctx.symbols["_unresolved"]
+        unresolved = ctx.symbol_map["_unresolved"]
         for sec in sections:
             for reloc in sec.runtime_relocs:
                 if reloc.t == RelType.REL24:
@@ -458,9 +477,9 @@ def elf_to_rel(
         bss_align = None
 
     # Gather export info
-    prolog = ctx.symbols["_prolog"]
-    epilog = ctx.symbols["_epilog"]
-    unresolved = ctx.symbols["_unresolved"]
+    prolog = ctx.symbol_map["_prolog"]
+    epilog = ctx.symbol_map["_epilog"]
+    unresolved = ctx.symbol_map["_unresolved"]
 
     # Build header
     header = RelHeader(
