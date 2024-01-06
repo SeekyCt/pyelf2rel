@@ -331,13 +331,21 @@ def group_module_relocations(section_relocs: list[dict[int, bytes]]) -> dict[int
     return {module: bytes(dat) for module, dat in ret.items()}
 
 
+@dataclass(frozen=True)
+class RelocationInfo:
+    reloc_offset: int
+    imp_offset: int
+    imp_size: int
+    fix_size: int
+    data: bytes
+
+
 def build_relocations(
     ctx: Context, file_pos: int, module_relocs: dict[int, bytes]
-) -> tuple[int, int, int, int, int, bytes]:
+) -> tuple[int, RelocationInfo]:
     """Builds the linked relocation and imp tables
 
-    Returns new file position, relocations offset, imp table offset, imp table size, fix size,
-    and the combined tables binary"""
+    Returns new file position and the linked information"""
 
     # Get table size
     imp_size = len(module_relocs) * 8
@@ -409,7 +417,7 @@ def build_relocations(
 
         dat = bytes(pre_pad) + rel_dat + imp_dat
 
-    return file_pos, reloc_offset, imp_offset, imp_size, fix_size, dat
+    return file_pos, RelocationInfo(reloc_offset, imp_offset, imp_size, fix_size, dat)
 
 
 def elf_to_rel(
@@ -456,9 +464,7 @@ def elf_to_rel(
     module_relocs = group_module_relocations(section_relocs)
 
     # Build reloc contents
-    file_pos, reloc_offset, imp_offset, imp_size, fix_size, reloc_dat = build_relocations(
-        ctx, file_pos, module_relocs
-    )
+    file_pos, relocation_info = build_relocations(ctx, file_pos, module_relocs)
 
     # Find bss section
     bss_sections = [sec for sec in sections if sec.header["sh_type"] == "SHT_NOBITS"]
@@ -496,9 +502,9 @@ def elf_to_rel(
         0,
         version,
         bss_size,
-        reloc_offset,
-        imp_offset,
-        imp_size,
+        relocation_info.reloc_offset,
+        relocation_info.imp_offset,
+        relocation_info.imp_size,
         prolog.st_shndx,
         epilog.st_shndx,
         unresolved.st_shndx,
@@ -508,7 +514,7 @@ def elf_to_rel(
         unresolved.st_value,
         align,
         bss_align,
-        fix_size,
+        relocation_info.fix_size,
     )
 
     # Build full binary
@@ -516,7 +522,7 @@ def elf_to_rel(
     dat.extend(header.to_binary())
     dat.extend(section_info)
     dat.extend(section_contents)
-    dat.extend(reloc_dat)
+    dat.extend(relocation_info.data)
 
     return bytes(dat)
 
