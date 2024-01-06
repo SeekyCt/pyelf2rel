@@ -29,29 +29,43 @@ if TYPE_CHECKING:
 class Context:
     """Utility struct for passing common data between the conversion functions"""
 
-    version: int
-    match_ttyd_tools: bool
+    # Module id of the rel to create
     module_id: int
+
+    # Version of the rel to create
+    version: int
+
+    # Input ELF file handle
     file: BinaryIO
+
+    # pyelftools ELFFile instance for the input ELF file
     plf: ELFFile
-    symbol_map: dict[str, Symbol]
+
+    # Symbols contained in the ELF
     symbols: list[Symbol]
+    symbol_map: dict[str, Symbol]
+
+    # External symbols provided
     lst_symbols: dict[str, RelSymbol]
+
+    # Toggle for matching ttyd-tools elf2rel behaviour
+    match_ttyd_tools: bool
 
     def __init__(
         self,
-        version: int,
         module_id: int,
         elf_file: BinaryIO,
         lst_file: TextIO,
         *,
-        match_ttyd_tools: bool,
+        version: int = 3,
+        match_ttyd_tools: bool = False,
     ):
-        self.version = version
-        self.match_ttyd_tools = match_ttyd_tools
         self.module_id = module_id
+        self.version = version
+
         self.file = elf_file
         self.plf = ELFFile(self.file)
+
         self.symbols = read_symbols(self.file, self.plf)
         self.symbol_map = map_elf_symbols(self.symbols)
         lst_txt = lst_file.read()
@@ -60,6 +74,8 @@ class Context:
         if len(overlap) > 0:
             raise DuplicateSymbolError(overlap)
 
+        self.match_ttyd_tools = match_ttyd_tools
+
 
 def map_elf_symbols(symbols: list[Symbol]) -> dict[str, Symbol]:
     """Creates a dict of global symbols by name"""
@@ -67,11 +83,13 @@ def map_elf_symbols(symbols: list[Symbol]) -> dict[str, Symbol]:
     ret = {}
     duplicates = set()
     for sym in symbols:
+        # Check symbol is global
         if (
             sym.name != ""
             and sym.st_bind == ENUM_ST_INFO_BIND["STB_GLOBAL"]
             and sym.st_shndx != SHN_INDICES.SHN_UNDEF
         ):
+            # Save duplicates to report later
             if sym.name in ret:
                 duplicates.add(sym.name)
             else:
@@ -89,6 +107,7 @@ def map_rel_symbols(symbols: list[RelSymbol]) -> dict[str, RelSymbol]:
     ret = {}
     duplicates = set()
     for sym in symbols:
+        # Save duplicates to report later
         if sym.name in ret:
             duplicates.add(sym.name)
         else:
@@ -118,17 +137,6 @@ def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
         return RelSymbol(ctx.module_id, sec, sym.st_value, sym.name)
 
 
-ttyd_tools_section_mask = [
-    ".init",
-    ".text",
-    ".ctors",
-    ".dtors",
-    ".rodata",
-    ".data",
-    ".bss",
-]
-
-
 def should_include_section(ctx: Context, sec_id: int, ignore_sections: list[str]) -> bool:
     """Checks if an section should be emitted in the rel"""
 
@@ -140,7 +148,15 @@ def should_include_section(ctx: Context, sec_id: int, ignore_sections: list[str]
     if ctx.match_ttyd_tools:
         return any(
             section.name == val or section.name.startswith(val + ".")
-            for val in ttyd_tools_section_mask
+            for val in [
+                ".init",
+                ".text",
+                ".ctors",
+                ".dtors",
+                ".rodata",
+                ".data",
+                ".bss",
+            ]
         )
     else:
         return (
@@ -153,10 +169,19 @@ def should_include_section(ctx: Context, sec_id: int, ignore_sections: list[str]
 class BinarySection:
     """Container for a processed section"""
 
+    # Index of the section in the ELF
     sec_id: int
+
+    # ELF header for the section
     header: Section
+
+    # Binary contents of the section (unlinked)
     contents: bytes
+
+    # Relocations to be applied at runtime to the section
     runtime_relocs: list[RelReloc]
+
+    # Relocations to be applied at compile-time to the section
     static_relocs: list[RelReloc]
 
 
@@ -229,6 +254,7 @@ def build_section_contents(
 
     Returns new file position, linked data, and the file offsets of each section"""
 
+    # Concatenate section contents, respecting alignment
     dat = bytearray()
     offsets = {}  # positions in file
     internal_offsets = {}  # positions in dat
@@ -306,7 +332,7 @@ def make_section_relocations(section: BinarySection) -> dict[int, bytes]:
     # Get modules referenced
     modules = {r.target_module for r in section.runtime_relocs}
 
-    # Make data for modules
+    # Split relocs by module
     ret = {}
     for module in modules:
         # Get relevant relocs and sort them by offset
@@ -314,20 +340,21 @@ def make_section_relocations(section: BinarySection) -> dict[int, bytes]:
             [r for r in section.runtime_relocs if r.target_module == module], key=lambda r: r.offset
         )
 
-        # Add to output
         ret[module] = RelReloc.encode_section(section.sec_id, filtered_relocs)
 
     return ret
 
 
 def group_module_relocations(section_relocs: list[dict[int, bytes]]) -> dict[int, bytes]:
-    """Split up a list of relocations into binaries for which module they're targetting"""
+    """Gathers the relocations against each module from each section"""
 
-    # Group relocations
+    # Group across sections
     ret: dict[int, bytearray] = defaultdict(bytearray)
     for section in section_relocs:
         for module, relocs in section.items():
             ret[module].extend(relocs)
+
+    # Add terminators
     for relocs in ret.values():
         relocs.extend(RelReloc.encode_reloc(0, RelType.RVL_STOP, 0, 0))
 
@@ -336,10 +363,19 @@ def group_module_relocations(section_relocs: list[dict[int, bytes]]) -> dict[int
 
 @dataclass(frozen=True)
 class RelocationInfo:
+    # File offset of the relocation table
     reloc_offset: int
+
+    # File offset of the imp table
     imp_offset: int
+
+    # Size of the imp table (in bytes)
     imp_size: int
+
+    # File offset of data which can be discarded after OSLink
     fix_size: int
+
+    # Linked binary blob for the imp and relocation tables
     data: bytes
 
 
@@ -351,7 +387,7 @@ def build_relocations(
     Returns new file position and the linked information"""
 
     # Get table size
-    imp_size = len(module_relocs) * 8
+    imp_size = RelImp.binary_size(len(module_relocs.keys()))
 
     # Place imp before relocations if needed
     pre_pad = 0
@@ -398,12 +434,12 @@ def build_relocations(
     rel_dat = bytearray()
     imp_dat = bytearray()
     reloc_offset = file_pos
-    fix_size = file_pos
+    fix_size = file_pos  # Default if no relocations need to be kept
     for module_id in modules:
-        relocs = module_relocs[module_id]
         imp = RelImp(module_id, file_pos)
         imp_dat.extend(imp.to_binary())
 
+        relocs = module_relocs[module_id]
         rel_dat.extend(relocs)
         file_pos += len(relocs)
 
@@ -427,8 +463,8 @@ def elf_to_rel(
     module_id: int,
     elf_file: BinaryIO,
     lst_file: TextIO,
-    version: int = 3,
     *,
+    version: int = 3,
     match_ttyd_tools: bool = False,
     ignore_sections: list[str] | None = None,
 ) -> bytes:
@@ -439,7 +475,7 @@ def elf_to_rel(
         ignore_sections = []
 
     # Build context
-    ctx = Context(version, module_id, elf_file, lst_file, match_ttyd_tools=match_ttyd_tools)
+    ctx = Context(module_id, elf_file, lst_file, version=version, match_ttyd_tools=match_ttyd_tools)
 
     # Give space for header
     file_pos = RelHeader.binary_size(version)
@@ -474,25 +510,18 @@ def elf_to_rel(
     bss_size = sum(s.header["sh_size"] for s in bss_sections)
 
     # Calculate alignment
-    if version >= RelHeader.ALIGN_MIN_VER:
-        align = max(
-            sec.header["sh_addralign"]
-            for sec in sections
-            if sec.header["sh_type"] == "SHT_PROGBITS"
-        )
-
-        if len(bss_sections) > 0:
-            bss_align = max(s.header["sh_addralign"] for s in bss_sections)
-        else:
-            bss_align = 0
-    else:
-        align = None
-        bss_align = None
+    align = max(
+        sec.header["sh_addralign"] for sec in sections if sec.header["sh_type"] == "SHT_PROGBITS"
+    )
+    bss_align = max(s.header["sh_addralign"] for s in bss_sections) if len(bss_sections) > 0 else 0
 
     # Gather export info
-    prolog = ctx.symbol_map["_prolog"]
-    epilog = ctx.symbol_map["_epilog"]
-    unresolved = ctx.symbol_map["_unresolved"]
+    try:
+        prolog = ctx.symbol_map["_prolog"]
+        epilog = ctx.symbol_map["_epilog"]
+        unresolved = ctx.symbol_map["_unresolved"]
+    except KeyError as e:
+        raise MissingSymbolError(e.args[0]) from e
 
     # Build header
     header = RelHeader(
@@ -531,25 +560,31 @@ def elf_to_rel(
 
 
 def main(*, ttyd_tools=False):
-    parser = ArgumentParser()
+    parser = ArgumentParser(description="Converts an ELF file to a REL file")
+
+    input_file_help = "Input ELF path"
+    symbol_file_help = "Input LST path"
+    output_file_help = "Output ELF path"
 
     # Recreate ttyd-tools mandatory positional API
     # boost::program_options behaves differently to argparse
     if ttyd_tools:
         parser.add_argument("positionals", nargs="*")
-        arg_input_file = parser.add_argument("--input-file", "-i")
-        arg_symbol_file = parser.add_argument("--symbol-file", "-s")
-        parser.add_argument("--output-file", "-o", type=str)
+        arg_input_file = parser.add_argument("--input-file", "-i", help=input_file_help)
+        arg_symbol_file = parser.add_argument("--symbol-file", "-s", help=symbol_file_help)
+        parser.add_argument("--output-file", "-o", help=output_file_help)
     else:
-        arg_input_file = parser.add_argument("input_file")
-        arg_symbol_file = parser.add_argument("symbol_file")
-        parser.add_argument("output_file", nargs="?")
+        arg_input_file = parser.add_argument("input_file", help=input_file_help)
+        arg_symbol_file = parser.add_argument("symbol_file", help=symbol_file_help)
+        parser.add_argument("output_file", nargs="?", help=output_file_help)
 
     # Optional
     parser.add_argument("--rel-id", type=lambda x: int(x, 0), default=0x1000)
     parser.add_argument("--rel-version", type=int, default=3)
     if ttyd_tools:
-        parser.add_argument("-x", help="Hack to support the TTYDTOOLS environment variable")
+        parser.add_argument(
+            "-x", help="Ignored, hack to support the TTYDTOOLS environment variable"
+        )
     else:
         parser.add_argument("--ignore-sections", nargs="+", default=[])
 
@@ -587,7 +622,7 @@ def main(*, ttyd_tools=False):
             args.rel_id,
             f,
             sym,
-            args.rel_version,
+            version=args.rel_version,
             match_ttyd_tools=ttyd_tools,
             ignore_sections=None if ttyd_tools else args.ignore_sections,
         )

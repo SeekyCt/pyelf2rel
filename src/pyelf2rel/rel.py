@@ -113,6 +113,10 @@ class RelImp:
     def to_binary(self) -> bytes:
         return pack(">2I", self.module_id, self.offset)
 
+    @staticmethod
+    def binary_size(length: int) -> int:
+        return length * 8
+
 
 @dataclass(frozen=True)
 class RelHeader:
