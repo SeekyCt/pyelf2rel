@@ -41,6 +41,8 @@ def load_elf(module_id: int, file: BinaryIO) -> str:
 def make_lst(
     *, elfs: Iterable[tuple[int, str]] | None = None, lsts: Iterable[str] | None = None
 ) -> str:
+    """Makes an LST by combining symbols from ELFs and LSTs"""
+
     txts = []
 
     for module_id, elf_path in elfs or []:
@@ -61,17 +63,17 @@ def make_lst(
 
 
 def main():
-    parser = ArgumentParser()
+    parser = ArgumentParser(description="Makes an LST by combining symbosl from ELFs and LSTs")
     arg_elf = parser.add_argument(
-        "--elf", type=str, nargs="+", help="Input module id and elf path pairs", default=[]
+        "--elf", type=str, nargs="+", default=[], help="Input module id and elf path pairs"
     )
-    parser.add_argument("--lst", type=str, nargs="+", help="Input lst paths", default=[])
+    parser.add_argument("--lst", type=str, nargs="+", default=[], help="Input lst paths")
     args = parser.parse_args()
 
     if len(args.elf or []) % 2 != 0:
         raise ArgumentError(arg_elf, "Inputs require a module id and path for each entry")
-
     elfs = [(int(module_id), path) for module_id, path in pairwise(args.elf)]
+
     stdout.write(make_lst(elfs=elfs, lsts=args.lst))
 
 
