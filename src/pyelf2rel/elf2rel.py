@@ -3,7 +3,7 @@ from __future__ import annotations
 from argparse import ArgumentError, ArgumentParser
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, TextIO
 
 from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
@@ -39,17 +39,22 @@ class Context:
     lst_symbols: dict[str, RelSymbol]
 
     def __init__(
-        self, version: int, module_id: int, file: BinaryIO, lst_path: str, *, match_ttyd_tools: bool
+        self,
+        version: int,
+        module_id: int,
+        elf_file: BinaryIO,
+        lst_file: TextIO,
+        *,
+        match_ttyd_tools: bool,
     ):
         self.version = version
         self.match_ttyd_tools = match_ttyd_tools
         self.module_id = module_id
-        self.file = file
+        self.file = elf_file
         self.plf = ELFFile(self.file)
         self.symbols = read_symbols(self.file, self.plf)
         self.symbol_map = map_symbols(self.symbols)
-        with open(lst_path) as f:
-            lst_txt = f.read()
+        lst_txt = lst_file.read()
         self.lst_symbols = decode_lst(lst_txt)
         overlap = self.symbol_map.keys() & self.lst_symbols.keys()
         if len(overlap) > 0:
@@ -403,8 +408,8 @@ def build_relocations(
 
 def elf_to_rel(
     module_id: int,
-    file: BinaryIO,
-    lst_path: str,
+    elf_file: BinaryIO,
+    lst_file: TextIO,
     version: int = 3,
     *,
     match_ttyd_tools: bool = False,
@@ -417,7 +422,7 @@ def elf_to_rel(
         ignore_sections = []
 
     # Build context
-    ctx = Context(version, module_id, file, lst_path, match_ttyd_tools=match_ttyd_tools)
+    ctx = Context(version, module_id, elf_file, lst_file, match_ttyd_tools=match_ttyd_tools)
 
     # Give space for header
     file_pos = RelHeader.binary_size(version)
@@ -550,11 +555,11 @@ def main():
     else:
         output_file = input_file.removesuffix(".elf") + ".rel"
 
-    with open(input_file, "rb") as f:
+    with open(input_file, "rb") as f, open(symbol_file) as sym:
         dat = elf_to_rel(
             args.rel_id,
             f,
-            symbol_file,
+            sym,
             args.rel_version,
             match_ttyd_tools=args.match_ttyd_tools,
             ignore_sections=args.ignore_sections,
