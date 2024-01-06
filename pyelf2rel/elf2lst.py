@@ -10,19 +10,12 @@ from elftools.elf.constants import SHN_INDICES
 from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_ST_INFO_BIND
 
+from pyelf2rel.error import DuplicateSymbolError
+
 if TYPE_CHECKING:
     from typing import BinaryIO
 
     from elftools.elf.sections import SymbolTableSection
-
-###########
-# Utility #
-###########
-
-
-class DuplicateSymbolError(Exception):
-    def __init__(self, symbol: str):
-        super().__init__(f"Duplicate symbol {symbol}")
 
 
 ##########################

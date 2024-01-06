@@ -6,11 +6,18 @@ from dataclasses import dataclass
 from enum import IntEnum, unique
 from functools import cached_property
 from struct import pack, unpack
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_ST_INFO_BIND
+
+from pyelf2rel.error import (
+    DuplicateSymbolError,
+    LSTFormatError,
+    MissingSymbolError,
+    UnsupportedRelocationError,
+)
 
 if TYPE_CHECKING:
     from typing import BinaryIO
@@ -21,27 +28,6 @@ if TYPE_CHECKING:
 ###########
 # Utility #
 ###########
-
-
-class LSTFormatError(Exception):
-    def __init__(self, line: int, exception: str):
-        super().__init__(f"Error on line {line+1}: {exception}")
-
-
-class DuplicateSymbolError(Exception):
-    def __init__(self, symbols: Iterable[str]):
-        sym_str = ", ".join(symbols)
-        super().__init__(f"Duplicate symbol(s): {sym_str}")
-
-
-class MissingSymbolError(Exception):
-    def __init__(self, symbol: str):
-        super().__init__(f"Missing symbol {symbol}")
-
-
-class UnsupportedRelocationError(Exception):
-    def __init__(self, reloc_type: int):
-        super().__init__(f"Unsupported relocation type {reloc_type}")
 
 
 def align_to(offs: int, align: int) -> tuple[int, int]:
