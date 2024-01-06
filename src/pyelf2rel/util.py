@@ -10,6 +10,8 @@ T = TypeVar("T")
 
 
 def pairwise(seq: list[T]) -> Iterable[tuple[T, T]]:
+    """Iterates a sequence two values at a time"""
+
     return zip(*[iter(seq)] * 2)
 
 
