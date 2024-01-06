@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 def align_to(offs: int, align: int) -> tuple[int, int]:
     """Aligns an offset and gets the padding required"""
 
