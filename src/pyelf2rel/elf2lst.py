@@ -2,70 +2,15 @@ from __future__ import annotations
 
 from argparse import ArgumentError, ArgumentParser
 from dataclasses import dataclass
-from functools import cached_property
-from struct import unpack
 from typing import TYPE_CHECKING
 
 from elftools.elf.constants import SHN_INDICES
 from elftools.elf.elffile import ELFFile
-from elftools.elf.enums import ENUM_ST_INFO_BIND
 
-from pyelf2rel.error import DuplicateSymbolError
+from pyelf2rel.elf import Symbol, map_symbols
 
 if TYPE_CHECKING:
     from typing import BinaryIO
-
-    from elftools.elf.sections import SymbolTableSection
-
-
-##########################
-# Pyelftools Substitutes #
-##########################
-
-
-@dataclass(frozen=True)
-class Symbol:
-    """pyelftools symbol substitute"""
-
-    name: str
-    st_value: int
-    st_size: int
-    st_info: int
-    st_other: int
-    st_shndx: int
-
-    @cached_property
-    def st_bind(self) -> int:
-        return self.st_info >> 4
-
-
-def map_symbols(f: BinaryIO, plf: ELFFile) -> tuple[dict[str, Symbol], dict[int, Symbol]]:
-    """Loads symbols from an ELF file into dicts mapped by name and id"""
-
-    # Get symbol table
-    symtab: SymbolTableSection = plf.get_section_by_name(".symtab")
-
-    # Parse symbol table
-    symbols = {}
-    symbols_id = {}
-    for i in range(symtab.num_symbols()):
-        # Read in symbol bytes
-        f.seek(symtab["sh_offset"] + (i * symtab["sh_entsize"]))
-        dat = f.read(symtab["sh_entsize"])
-
-        # Parse bytes
-        st_name, st_value, st_size, st_info, st_other, st_shndx = unpack(">IIIBBH", dat)
-        name = symtab.stringtable.get_string(st_name)
-        sym = Symbol(name, st_value, st_size, st_info, st_other, st_shndx)
-
-        # Add to dicts
-        if sym.name != "" and sym.st_bind == ENUM_ST_INFO_BIND["STB_GLOBAL"]:
-            if sym.name in symbols:
-                raise DuplicateSymbolError(sym.name)
-            symbols[sym.name] = sym
-        symbols_id[i] = sym
-
-    return symbols, symbols_id
 
 
 #############
