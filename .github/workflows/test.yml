@@ -40,3 +40,6 @@ jobs:
 
     - name: Run tests
       run: hatch run cov
+
+    - name: Run mypy
+      run: hatch run types:check
