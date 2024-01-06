@@ -12,10 +12,10 @@ from pyelf2rel.align import align_to, align_to_ttyd_tools
 from pyelf2rel.elf import Symbol, map_symbols, read_relocs
 from pyelf2rel.error import (
     DuplicateSymbolError,
-    LSTFormatError,
     MissingSymbolError,
     UnsupportedRelocationError,
 )
+from pyelf2rel.lst import load_lst
 from pyelf2rel.rel import RelHeader, RelImp, RelReloc, RelSectionInfo, RelSymbol, RelType
 
 if TYPE_CHECKING:
@@ -23,59 +23,6 @@ if TYPE_CHECKING:
 
     from elftools.elf.relocation import RelocationSection
     from elftools.elf.sections import Section
-
-
-###############
-# LST Loading #
-###############
-
-
-def load_lst(filename: str) -> dict[str, RelSymbol]:
-    """Parses an LST symbol map"""
-
-    # Load LST
-    with open(filename) as f:
-        lines = f.readlines()
-
-    # Parse lines
-    symbols = {}
-    for i, full_line in enumerate(lines):
-        # Ignore comments and whitespace
-        line = full_line.strip()
-        if line.startswith("/") or len(line) == 0:
-            continue
-
-        # Try parse
-        # Dol - addr:name
-        # Rel - moduleId,sectionId,offset:name
-        colon_parts = [s.strip() for s in line.split(":")]
-        try:
-            other, name = colon_parts
-        except ValueError as e:
-            raise LSTFormatError(i, "Expected exactly 1 colon") from e
-        comma_parts = [s.strip() for s in other.split(",")]
-        if len(comma_parts) == 1:
-            # Dol
-            addr = comma_parts[0]
-            try:
-                symbols[name] = RelSymbol(0, 0, int(addr, 16), name)
-            except ValueError as e:
-                raise LSTFormatError(i, str(e)) from e
-        else:
-            # Rel
-            try:
-                module_id, section_id, offset = comma_parts
-            except ValueError as e:
-                raise LSTFormatError(i, "Expected 1 or 3 commas before colon") from e
-
-            try:
-                symbols[name] = RelSymbol(
-                    int(module_id, 0), int(section_id, 0), int(offset, 16), name
-                )
-            except ValueError as e:
-                raise LSTFormatError(i, str(e)) from e
-
-    return symbols
 
 
 ##############
@@ -104,7 +51,9 @@ class Context:
         self.file = file
         self.plf = ELFFile(self.file)
         self.symbols, self.symbols_id = map_symbols(self.file, self.plf)
-        self.lst_symbols = load_lst(lst_path)
+        with open(lst_path) as f:
+            lst_txt = f.read()
+        self.lst_symbols = load_lst(lst_txt)
         overlap = self.symbols.keys() & self.lst_symbols.keys()
         if len(overlap) > 0:
             raise DuplicateSymbolError(overlap)

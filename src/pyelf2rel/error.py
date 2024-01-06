@@ -8,8 +8,18 @@ class DuplicateSymbolError(Exception):
 
 
 class LSTFormatError(Exception):
-    def __init__(self, line: int, exception: str):
-        super().__init__(f"Error on line {line+1}: {exception}")
+    def __init__(self, exception: str):
+        super().__init__(f"LST format error: {exception}")
+
+
+class LSTColonError(Exception):
+    def __init__(self):
+        super().__init__("Expected exactly 1 colon")
+
+
+class LSTCommaError(Exception):
+    def __init__(self):
+        super().__init__("Expected 1 or 3 commas before colon")
 
 
 class MissingSymbolError(Exception):
