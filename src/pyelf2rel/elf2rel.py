@@ -292,27 +292,8 @@ def make_section_relocations(section: BinarySection) -> dict[int, bytes]:
             [r for r in section.runtime_relocs if r.target_module == module], key=lambda r: r.offset
         )
 
-        # Convert relocs to binary
-        dat = bytearray()
-        dat.extend(RelReloc.encode_reloc(0, RelType.RVL_SECT, section.sec_id, 0))
-        offs = 0
-        for rel in filtered_relocs:
-            # Calculate delta
-            delta = rel.offset - offs
-
-            # Use nops to get delta in range
-            while delta > RelReloc.MAX_DELTA:
-                dat.extend(RelReloc.encode_reloc(RelReloc.MAX_DELTA, RelType.RVL_NONE, 0, 0))
-                delta -= RelReloc.MAX_DELTA
-
-            # Convert to binary
-            dat.extend(rel.to_binary(delta))
-
-            # Move to offset
-            offs = rel.offset
-
         # Add to output
-        ret[module] = bytes(dat)
+        ret[module] = RelReloc.encode_section(section.sec_id, filtered_relocs)
 
     return ret
 

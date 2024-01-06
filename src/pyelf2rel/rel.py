@@ -80,6 +80,30 @@ class RelReloc:
 
         return pack(">HBBI", relative_offset, t, section, addend)
 
+    @staticmethod
+    def encode_section(section_id: int, relocs: list[RelReloc]) -> bytes:
+        """Converts a list of relocations in a section to binary"""
+
+        dat = bytearray()
+        dat.extend(RelReloc.encode_reloc(0, RelType.RVL_SECT, section_id, 0))
+        offs = 0
+        for rel in relocs:
+            # Calculate delta
+            delta = rel.offset - offs
+
+            # Use nops to get delta in range
+            while delta > RelReloc.MAX_DELTA:
+                dat.extend(RelReloc.encode_reloc(RelReloc.MAX_DELTA, RelType.RVL_NONE, 0, 0))
+                delta -= RelReloc.MAX_DELTA
+
+            # Convert to binary
+            dat.extend(rel.to_binary(delta))
+
+            # Move to offset
+            offs = rel.offset
+
+        return bytes(dat)
+
 
 @dataclass(frozen=True)
 class RelImp:
