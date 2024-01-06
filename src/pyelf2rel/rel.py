@@ -88,7 +88,6 @@ class RelReloc:
         dat.extend(RelReloc.encode_reloc(0, RelType.RVL_SECT, section_id, 0))
         offs = 0
         for rel in relocs:
-            # Calculate delta
             delta = rel.offset - offs
 
             # Use nops to get delta in range
@@ -96,10 +95,9 @@ class RelReloc:
                 dat.extend(RelReloc.encode_reloc(RelReloc.MAX_DELTA, RelType.RVL_NONE, 0, 0))
                 delta -= RelReloc.MAX_DELTA
 
-            # Convert to binary
             dat.extend(rel.to_binary(delta))
 
-            # Move to offset
+            # Move to new offset
             offs = rel.offset
 
         return bytes(dat)
