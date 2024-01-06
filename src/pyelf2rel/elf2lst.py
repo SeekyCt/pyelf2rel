@@ -1,46 +1,28 @@
 from __future__ import annotations
 
 from argparse import ArgumentError, ArgumentParser
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from elftools.elf.constants import SHN_INDICES
 from elftools.elf.elffile import ELFFile
 
-from pyelf2rel.elf import Symbol, map_symbols
+from pyelf2rel.elf import map_symbols
+from pyelf2rel.rel import RelSymbol
 
 if TYPE_CHECKING:
     from typing import BinaryIO
 
 
-#############
-# Rel Types #
-#############
-
-
-@dataclass
-class RelSymbol:
-    """Container for a symbol in a rel file"""
-
-    module_id: int
-    section_id: int
-    offset: int
-    name: str
-
-    @staticmethod
-    def from_elf(module_id: int, sym: Symbol):
-        return RelSymbol(module_id, sym.st_shndx, sym.st_value, sym.name)
-
-    def to_lst(self) -> str:
-        if self.module_id == 0:
-            return f"{self.offset:08x}:{self.name}"
-        else:
-            return f"{self.module_id},{self.section_id},{self.offset:08x}:{self.name}"
-
-
 ##############
 # Conversion #
 ##############
+
+
+def encode_symbol(sym: RelSymbol):
+    if sym.module_id == 0:
+        return f"{sym.offset:08x}:{sym.name}"
+    else:
+        return f"{sym.module_id},{sym.section_id},{sym.offset:08x}:{sym.name}"
 
 
 def elf_to_lst(module_id: int, file: BinaryIO) -> str:
@@ -50,12 +32,12 @@ def elf_to_lst(module_id: int, file: BinaryIO) -> str:
     symbols, _ = map_symbols(file, plf)
 
     rel_symbols = [
-        RelSymbol.from_elf(module_id, sym)
+        RelSymbol(module_id, sym.st_shndx, sym.st_value, sym.name)
         for sym in symbols.values()
         if sym.st_shndx != SHN_INDICES.SHN_UNDEF
     ]
 
-    return "\n".join(s.to_lst() for s in rel_symbols)
+    return "\n".join(encode_symbol(s) for s in rel_symbols)
 
 
 def main():
