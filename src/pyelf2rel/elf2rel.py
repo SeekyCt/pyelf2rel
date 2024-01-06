@@ -513,26 +513,40 @@ def elf_to_rel(
     return bytes(dat)
 
 
-def main():
+def main(*, ttyd_tools=False):
     parser = ArgumentParser()
 
-    # Positional API - boost::program_options behaves differently to argparse
-    parser.add_argument("positionals", type=str, nargs="*")
-
-    # Non-positional API
-    arg_input_file = parser.add_argument("--input-file", "-i", type=str)
-    arg_symbol_file = parser.add_argument("--symbol-file", "-s", type=str)
-    parser.add_argument("--output-file", "-o", type=str)
+    # Recreate ttyd-tools mandatory positional API
+    # boost::program_options behaves differently to argparse
+    if ttyd_tools:
+        parser.add_argument("positionals", nargs="*")
+        arg_input_file = parser.add_argument("--input-file", "-i")
+        arg_symbol_file = parser.add_argument("--symbol-file", "-s")
+        parser.add_argument("--output-file", "-o", type=str)
+    else:
+        arg_input_file = parser.add_argument("input_file")
+        arg_symbol_file = parser.add_argument("symbol_file")
+        parser.add_argument("output_file", nargs="?")
 
     # Optional
     parser.add_argument("--rel-id", type=lambda x: int(x, 0), default=0x1000)
     parser.add_argument("--rel-version", type=int, default=3)
-    parser.add_argument("--match-ttyd-tools", action="store_true")
-    parser.add_argument("--ignore-sections", nargs="+", default=[])
+    if ttyd_tools:
+        parser.add_argument("-x", help="Hack to support the TTYDTOOLS environment variable")
+    else:
+        parser.add_argument("--ignore-sections", nargs="+", default=[])
 
     args = parser.parse_args()
 
-    positionals = list(args.positionals)
+    positionals = list(args.positionals) if ttyd_tools else []
+
+    # TTYDTOOLS environment variable compatability hack
+    if (
+        ttyd_tools and
+        len(positionals) > 0 and
+        positionals[0] in ("\\bin\\elf2rel", "/bin/elf2rel")
+    ):
+        positionals.pop(0)
 
     if len(positionals) > 0:
         input_file = positionals.pop(0)
@@ -561,12 +575,16 @@ def main():
             f,
             sym,
             args.rel_version,
-            match_ttyd_tools=args.match_ttyd_tools,
-            ignore_sections=args.ignore_sections,
+            match_ttyd_tools=ttyd_tools,
+            ignore_sections=None if ttyd_tools else args.ignore_sections,
         )
 
     with open(output_file, "wb") as f:
         f.write(dat)
+
+
+def ttyd_tools_main():
+    main(ttyd_tools=True)
 
 
 if __name__ == "__main__":
