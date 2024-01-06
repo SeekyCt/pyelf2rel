@@ -4,6 +4,14 @@
 
 from __future__ import annotations
 
+from typing import Iterable, TypeVar
+
+T = TypeVar("T")
+
+
+def pairwise(seq: list[T]) -> Iterable[tuple[T, T]]:
+    return zip(*[iter(seq)] * 2)
+
 
 def align_to(offs: int, align: int) -> tuple[int, int]:
     """Aligns an offset and gets the padding required"""

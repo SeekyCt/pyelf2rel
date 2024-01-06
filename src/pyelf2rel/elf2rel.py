@@ -9,7 +9,6 @@ from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_ST_INFO_BIND
 
-from pyelf2rel.util import align_to, align_to_ttyd_tools
 from pyelf2rel.elf import Symbol, read_relocs, read_symbols
 from pyelf2rel.error import (
     DuplicateSymbolError,
@@ -18,6 +17,7 @@ from pyelf2rel.error import (
 )
 from pyelf2rel.lst import load_lst
 from pyelf2rel.rel import RelHeader, RelImp, RelReloc, RelSectionInfo, RelSymbol, RelType
+from pyelf2rel.util import align_to, align_to_ttyd_tools
 
 if TYPE_CHECKING:
     from typing import BinaryIO
