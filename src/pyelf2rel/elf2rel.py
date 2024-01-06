@@ -53,15 +53,15 @@ class Context:
         self.file = elf_file
         self.plf = ELFFile(self.file)
         self.symbols = read_symbols(self.file, self.plf)
-        self.symbol_map = map_symbols(self.symbols)
+        self.symbol_map = map_elf_symbols(self.symbols)
         lst_txt = lst_file.read()
-        self.lst_symbols = load_lst(lst_txt)
+        self.lst_symbols = map_rel_symbols(load_lst(lst_txt))
         overlap = self.symbol_map.keys() & self.lst_symbols.keys()
         if len(overlap) > 0:
             raise DuplicateSymbolError(overlap)
 
 
-def map_symbols(symbols: list[Symbol]) -> dict[str, Symbol]:
+def map_elf_symbols(symbols: list[Symbol]) -> dict[str, Symbol]:
     """Creates a dict of global symbols by name"""
 
     ret = {}
@@ -76,6 +76,23 @@ def map_symbols(symbols: list[Symbol]) -> dict[str, Symbol]:
                 duplicates.add(sym.name)
             else:
                 ret[sym.name] = sym
+
+    if len(duplicates) > 0:
+        raise DuplicateSymbolError(duplicates)
+
+    return ret
+
+
+def map_rel_symbols(symbols: list[RelSymbol]) -> dict[str, RelSymbol]:
+    """Creates a dict of symbols by name"""
+
+    ret = {}
+    duplicates = set()
+    for sym in symbols:
+        if sym.name in ret:
+            duplicates.add(sym.name)
+        else:
+            ret[sym.name] = sym
 
     if len(duplicates) > 0:
         raise DuplicateSymbolError(duplicates)
@@ -541,11 +558,7 @@ def main(*, ttyd_tools=False):
     positionals = list(args.positionals) if ttyd_tools else []
 
     # TTYDTOOLS environment variable compatability hack
-    if (
-        ttyd_tools and
-        len(positionals) > 0 and
-        positionals[0] in ("\\bin\\elf2rel", "/bin/elf2rel")
-    ):
+    if ttyd_tools and len(positionals) > 0 and positionals[0] in ("\\bin\\elf2rel", "/bin/elf2rel"):
         positionals.pop(0)
 
     if len(positionals) > 0:
