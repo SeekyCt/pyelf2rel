@@ -30,6 +30,13 @@ class LSTColonError(LSTFormatError):
         super().__init__("Expected exactly 1 colon", line_num)
 
 
+class LSTQMarkError(LSTFormatError):
+    """A line of an LST has too many colons"""
+
+    def __init__(self, line_num: int | None):
+        super().__init__("Expected exactly 1 question mark", line_num)
+
+
 class LSTCommaError(LSTFormatError):
     """A line of an LST has the wrong number of commas"""
 

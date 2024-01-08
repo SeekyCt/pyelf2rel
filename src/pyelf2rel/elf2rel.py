@@ -3,7 +3,8 @@ from __future__ import annotations
 from argparse import ArgumentError, ArgumentParser
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, TextIO
+from enum import Enum
+from typing import TYPE_CHECKING, Callable, TextIO, TypedDict
 
 from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
@@ -24,6 +25,113 @@ if TYPE_CHECKING:
 
     from elftools.elf.relocation import RelocationSection
     from elftools.elf.sections import Section
+
+
+class ElfToRelBehaviour(Enum):
+    """Tool output behaviour"""
+
+    # Modern defaults
+    # Mostly based off of how official rels are laid out
+    PYELF2REL = 0
+
+    # spm-rel-loader elf2rel fork (elf2rel-21-12-2021, elf2rel-13-6-2022)
+    MODERN_FORK = 1
+
+    # older spm-rel-loader elf2rel fork (elf2rel-24-6-2021)
+    # LSTs can still contain modern format symbols
+    OLD_FORK = 2
+
+    # Original ttyd-tools elf2rel
+    # LSTs can still contain modern format symbols
+    TTYD_TOOLS = 3
+
+
+class RelocationModuleOrder(Enum):
+    """Sorting method to use on relocation module groups"""
+
+    # Ascending module id (unsafe for fixed link)
+    NONE = 0
+
+    # Ascending module id, self and dol moved back
+    MODERN_FORK = 1
+
+    # Ascending module id, dol second last, self last
+    PYELF2REL = 2
+
+
+class BehaviourDef(TypedDict):
+    """Specific settings for an ElfToRelBehaviour"""
+
+    # Whether the old external symbol syntax is supported in lsts
+    old_fork_lsts: bool
+
+    # Whether the sections to include are based on names alone
+    hardcoded_section_names: bool
+
+    # Sorting method for module groups in relocations
+    relocation_order: RelocationModuleOrder
+
+    # Valid fix size calculated
+    correct_fix_size: bool
+
+    # Allow cross-section compile-time branch relocation
+    # TODO: maybe always enable
+    extended_static_relocs: bool
+
+    # Send run-time relocated branches to _unresolved
+    unresolved_branches: bool
+
+    # Whether to always placethe imp section is always placed before the relocations
+    # If false, version 1 and 2 will place relocations first
+    imp_always_first: bool
+
+    # Whether to align the imp section to 8 bytes
+    # TODO: maybe always align, and this just toggles the round up bug
+    aligned_imp: bool
+
+
+BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
+    ElfToRelBehaviour.PYELF2REL: {
+        "old_fork_lsts": False,
+        "hardcoded_section_names": False,
+        "relocation_order": RelocationModuleOrder.PYELF2REL,
+        "correct_fix_size": True,
+        "extended_static_relocs": False,
+        "unresolved_branches": True,
+        "imp_always_first": False,
+        "aligned_imp": False,
+    },
+    ElfToRelBehaviour.MODERN_FORK: {
+        "old_fork_lsts": False,
+        "hardcoded_section_names": True,
+        "relocation_order": RelocationModuleOrder.MODERN_FORK,
+        "correct_fix_size": True,
+        "extended_static_relocs": True,
+        "unresolved_branches": False,
+        "imp_always_first": True,
+        "aligned_imp": True,
+    },
+    ElfToRelBehaviour.OLD_FORK: {
+        "old_fork_lsts": True,
+        "hardcoded_section_names": True,
+        "relocation_order": RelocationModuleOrder.NONE,
+        "correct_fix_size": False,
+        "extended_static_relocs": True,
+        "unresolved_branches": False,
+        "imp_always_first": True,
+        "aligned_imp": True,
+    },
+    ElfToRelBehaviour.TTYD_TOOLS: {
+        "old_fork_lsts": False,
+        "hardcoded_section_names": True,
+        "relocation_order": RelocationModuleOrder.NONE,
+        "correct_fix_size": False,
+        "extended_static_relocs": True,
+        "unresolved_branches": False,
+        "imp_always_first": True,
+        "aligned_imp": True,
+    },
+}
 
 
 class Context:
@@ -48,8 +156,8 @@ class Context:
     # External symbols provided
     lst_symbols: dict[str, RelSymbol]
 
-    # Toggle for matching ttyd-tools elf2rel behaviour
-    match_ttyd_tools: bool
+    # Toggles for matching legacy behaviour
+    behaviour: BehaviourDef
 
     def __init__(
         self,
@@ -58,7 +166,7 @@ class Context:
         lst_file: TextIO,
         *,
         version: int = 3,
-        match_ttyd_tools: bool = False,
+        behaviour: ElfToRelBehaviour = ElfToRelBehaviour.PYELF2REL,
     ):
         self.module_id = module_id
         self.version = version
@@ -68,13 +176,16 @@ class Context:
 
         self.symbols = read_symbols(self.file, self.plf)
         self.symbol_map = map_elf_symbols(self.symbols)
+
+        self.behaviour = BEHAVIOURS[behaviour]
+
         lst_txt = lst_file.read()
-        self.lst_symbols = map_rel_symbols(load_lst(lst_txt))
+        lst = load_lst(lst_txt, support_old_fork=self.behaviour["old_fork_lsts"])
+        self.lst_symbols = map_rel_symbols(lst)
+
         overlap = self.symbol_map.keys() & self.lst_symbols.keys()
         if len(overlap) > 0:
             raise DuplicateSymbolError(overlap)
-
-        self.match_ttyd_tools = match_ttyd_tools
 
 
 def map_elf_symbols(symbols: list[Symbol]) -> dict[str, Symbol]:
@@ -145,7 +256,7 @@ def should_include_section(ctx: Context, sec_id: int, ignore_sections: list[str]
     if section.name in ignore_sections:
         return False
 
-    if ctx.match_ttyd_tools:
+    if ctx.behaviour["hardcoded_section_names"]:
         return any(
             section.name == val or section.name.startswith(val + ".")
             for val in [
@@ -222,7 +333,7 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
         if (
             t in (RelType.REL24, RelType.REL32)
             and target.module_id == ctx.module_id
-            and (ctx.match_ttyd_tools or sec_id == target.section_id)
+            and (ctx.behaviour["extended_static_relocs"] or sec_id == target.section_id)
         ):
             skip_runtime = True
 
@@ -293,7 +404,7 @@ def build_section_contents(
             early_relocate(reloc.t, sec.sec_id, reloc.offset, reloc.section, reloc.addend)
 
     # Patch runtime reloc branches to _unresolved
-    if not ctx.match_ttyd_tools:
+    if ctx.behaviour["unresolved_branches"]:
         unresolved = ctx.symbol_map["_unresolved"]
         for sec in sections:
             for reloc in sec.runtime_relocs:
@@ -391,9 +502,9 @@ def build_relocations(
 
     # Place imp before relocations if needed
     pre_pad = 0
-    if ctx.version >= RelHeader.FIX_SIZE_MIN_VER or ctx.match_ttyd_tools:
+    if ctx.version >= RelHeader.FIX_SIZE_MIN_VER or ctx.behaviour["imp_always_first"]:
         # ttyd-tools aligns this to 8 bytes, and rounds up 0-length padding
-        if ctx.match_ttyd_tools:
+        if ctx.behaviour["aligned_imp"]:
             file_pos, pre_pad = align_to_ttyd_tools(file_pos, 8)
 
         imp_offset = file_pos
@@ -404,7 +515,7 @@ def build_relocations(
     # Sort reloc groups
     base = max(module_relocs.keys())
     module_key: Callable[[int], int] | None
-    if ctx.match_ttyd_tools:
+    if ctx.behaviour["relocation_order"] == RelocationModuleOrder.MODERN_FORK:
 
         def ttyd_tools_module_key(module):
             if module in (0, ctx.module_id):
@@ -413,7 +524,10 @@ def build_relocations(
                 return module
 
         module_key = ttyd_tools_module_key
-    elif ctx.version >= RelHeader.FIX_SIZE_MIN_VER:
+    elif (
+        ctx.behaviour["relocation_order"] == RelocationModuleOrder.PYELF2REL
+        and ctx.version >= RelHeader.FIX_SIZE_MIN_VER
+    ):
 
         def fix_size_module_key(module):
             # Put self second last
@@ -443,7 +557,7 @@ def build_relocations(
         rel_dat.extend(relocs)
         file_pos += len(relocs)
 
-        if module_id not in (0, ctx.module_id):
+        if ctx.behaviour["correct_fix_size"] and module_id not in (0, ctx.module_id):
             fix_size = file_pos
 
     # Combine data
@@ -465,7 +579,7 @@ def elf_to_rel(
     lst_file: TextIO,
     *,
     version: int = 3,
-    match_ttyd_tools: bool = False,
+    behaviour: ElfToRelBehaviour = ElfToRelBehaviour.PYELF2REL,
     ignore_sections: list[str] | None = None,
 ) -> bytes:
     """Converts a partially linked elf file into a rel file"""
@@ -475,7 +589,7 @@ def elf_to_rel(
         ignore_sections = []
 
     # Build context
-    ctx = Context(module_id, elf_file, lst_file, version=version, match_ttyd_tools=match_ttyd_tools)
+    ctx = Context(module_id, elf_file, lst_file, version=version, behaviour=behaviour)
 
     # Give space for header
     file_pos = RelHeader.binary_size(version)
@@ -583,6 +697,11 @@ def main(*, ttyd_tools=False):
     parser.add_argument("--rel-version", type=int, default=3)
     if ttyd_tools:
         parser.add_argument(
+            "--type",
+            options=["ttyd-tools", "old-fork", "modern-fork"],
+            default="modern-fork",
+        )
+        parser.add_argument(
             "-x", help="Ignored, hack to support the TTYDTOOLS environment variable"
         )
     else:
@@ -613,14 +732,23 @@ def main(*, ttyd_tools=False):
     else:
         output_file = input_file.removesuffix(".elf") + ".rel"
 
+    if ttyd_tools:
+        behaviour = {
+            "ttyd-tools": ElfToRelBehaviour.TTYD_TOOLS,
+            "old-fork": ElfToRelBehaviour.OLD_FORK,
+            "modern-fork": ElfToRelBehaviour.MODERN_FORK,
+        }[args.ttyd_tools_type]
+    else:
+        behaviour = ElfToRelBehaviour.PYELF2REL
+
     with open(input_file, "rb") as f, open(symbol_file) as sym:
         dat = elf_to_rel(
             args.rel_id,
             f,
             sym,
             version=args.rel_version,
-            match_ttyd_tools=ttyd_tools,
             ignore_sections=None if ttyd_tools else args.ignore_sections,
+            behaviour=behaviour,
         )
 
     with open(output_file, "wb") as f:

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from pyelf2rel.error import LSTColonError, LSTCommaError, LSTFormatError
+from pyelf2rel.error import LSTColonError, LSTCommaError, LSTFormatError, LSTQMarkError
 from pyelf2rel.rel import RelSymbol
 
 
@@ -23,18 +23,39 @@ def dump_lst(symbols: list[RelSymbol]) -> str:
     return "\n".join(dump_lst_symbol(s) for s in symbols)
 
 
-def load_lst_symbol(line: str, line_num: int | None = None) -> RelSymbol:
+def load_lst_symbol(
+    line: str, line_num: int | None = None, *, support_old_fork: bool = False
+) -> RelSymbol:
     """Loads a symbol from a line of an LST"""
 
     # Try parse
     # Dol - addr:name
     # Rel - moduleId,sectionId,offset:name
+    # Old rel - offset:name?moduleId,sectionId
+
     colon_parts = [s.strip() for s in line.split(":")]
     try:
         other, name = colon_parts
     except ValueError as e:
         raise LSTColonError(line_num) from e
+
     comma_parts = [s.strip() for s in other.split(",")]
+
+    # If supporting old symbols, check for ? at the end
+    if support_old_fork and len(comma_parts) == 1 and "?" in name:
+        qmark_parts = name.split("?")
+        try:
+            name, old_rel_info = qmark_parts
+        except ValueError as e:
+            raise LSTQMarkError(line_num) from e
+
+        old_comma_parts = old_rel_info.split(",")
+        try:
+            module, section = old_comma_parts
+        except ValueError as e:
+            raise LSTCommaError(line_num) from e
+        comma_parts = [module, section, *comma_parts]
+
     if len(comma_parts) == 1:
         # Dol
         addr = comma_parts[0]
@@ -55,7 +76,7 @@ def load_lst_symbol(line: str, line_num: int | None = None) -> RelSymbol:
             raise LSTFormatError(str(e), line_num) from e
 
 
-def load_lst(txt: str) -> list[RelSymbol]:
+def load_lst(txt: str, *, support_old_fork: bool = False) -> list[RelSymbol]:
     """Parses an LST symbol map"""
 
     ret = []
@@ -65,6 +86,7 @@ def load_lst(txt: str) -> list[RelSymbol]:
         if strip.startswith("/") or len(strip) == 0:
             continue
 
-        ret.append(load_lst_symbol(strip, i + 1))
+        sym = load_lst_symbol(strip, i + 1, support_old_fork=support_old_fork)
+        ret.append(sym)
 
     return ret
