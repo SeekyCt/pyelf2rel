@@ -55,3 +55,12 @@ def test_old_rel_lst():
         expected = rel.read()
 
     assert dat == expected
+
+
+def test_ttyd_tools():
+    name = "spm-practice-codes-642167b"
+    dat = link_rel(0x1000, name, behaviour=ElfToRelBehaviour.MODERN_FORK)
+    with open(f"tests/resources/{name}.rel", "rb") as rel:
+        expected = rel.read()
+
+    assert dat == expected
