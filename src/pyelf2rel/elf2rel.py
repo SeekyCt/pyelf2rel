@@ -592,10 +592,6 @@ def main(*, ttyd_tools=False):
 
     positionals = list(args.positionals) if ttyd_tools else []
 
-    # TTYDTOOLS environment variable compatability hack
-    if ttyd_tools and len(positionals) > 0 and positionals[0] in ("\\bin\\elf2rel", "/bin/elf2rel"):
-        positionals.pop(0)
-
     if len(positionals) > 0:
         input_file = positionals.pop(0)
     else:

@@ -22,8 +22,7 @@ The tool provides an option for matching the API and behaviour of the ttyd-tools
 through the `elf2rel` command.
 
 - For building projects requiring the `ELF2REL` environment variable, set it equal to `elf2rel`
-- For building projects requiring the `TTYDTOOLS` environment variable, set it equal to either
-`elf2rel ` (including the trailing space), or `elf2rel -x`
+- For building projects requiring the `TTYDTOOLS` environment variable, set it equal to `elf2rel -x`
 
 ## License
 
