@@ -735,11 +735,11 @@ def main(argv: list[str], *, ttyd_tools=False):
 
 
 def entry():
-    main(argv)
+    main(argv[1:])
 
 
 def entry_ttyd_tools():
-    main(argv, ttyd_tools=True)
+    main(argv[1:], ttyd_tools=True)
 
 
 if __name__ == "__main__":
