@@ -40,7 +40,7 @@ def test_spm_core():
 def test_spm_practice_codes():
     """Test that spm-practice-codes links the same way as in previous pyelf2rel commits"""
 
-    name = "spm-practice-codes-b94a94a"
+    name = "spm-practice-codes-3974b24"
     dat = link_rel(0x1000, name)
     with open(f"tests/resources/{name}.rel", "rb") as rel:
         expected = rel.read()
@@ -63,7 +63,7 @@ def test_spm_practice_codes_modern_fork():
     """Tests that spm-practice-codes links the same way as in the modern spm-rel-loader elf2rel
     fork"""
 
-    name = "spm-practice-codes-b94a94a"
+    name = "spm-practice-codes-3974b24"
     dat = link_rel(0x1000, name, ttyd_tools=True)
     with open(f"tests/resources/{name}_modern.rel", "rb") as rel:
         expected = rel.read()
