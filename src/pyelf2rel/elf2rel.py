@@ -34,16 +34,12 @@ class ElfToRelBehaviour(Enum):
     # Mostly based off of how official rels are laid out
     PYELF2REL = 0
 
-    # spm-rel-loader elf2rel fork (elf2rel-21-12-2021, elf2rel-13-6-2022)
+    # spm-rel-loader elf2rel fork (elf2rel-13-6-2022)
     MODERN_FORK = 1
 
     # older spm-rel-loader elf2rel fork (elf2rel-24-6-2021)
     # LSTs can still contain modern format symbols
     OLD_FORK = 2
-
-    # Original ttyd-tools elf2rel
-    # LSTs can still contain modern format symbols
-    TTYD_TOOLS = 3
 
 
 class RelocationModuleOrder(Enum):
@@ -113,16 +109,6 @@ BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
     },
     ElfToRelBehaviour.OLD_FORK: {
         "old_fork_lsts": True,
-        "hardcoded_section_names": True,
-        "relocation_order": RelocationModuleOrder.NONE,
-        "correct_fix_size": False,
-        "extended_static_relocs": True,
-        "unresolved_branches": False,
-        "imp_always_first": True,
-        "aligned_imp": True,
-    },
-    ElfToRelBehaviour.TTYD_TOOLS: {
-        "old_fork_lsts": False,
         "hardcoded_section_names": True,
         "relocation_order": RelocationModuleOrder.NONE,
         "correct_fix_size": False,
@@ -517,13 +503,13 @@ def build_relocations(
     module_key: Callable[[int], int] | None
     if ctx.behaviour["relocation_order"] == RelocationModuleOrder.MODERN_FORK:
 
-        def ttyd_tools_module_key(module):
+        def modern_fork_module_key(module):
             if module in (0, ctx.module_id):
                 return base + module
             else:
                 return module
 
-        module_key = ttyd_tools_module_key
+        module_key = modern_fork_module_key
     elif (
         ctx.behaviour["relocation_order"] == RelocationModuleOrder.PYELF2REL
         and ctx.version >= RelHeader.FIX_SIZE_MIN_VER
@@ -698,7 +684,7 @@ def main(*, ttyd_tools=False):
     if ttyd_tools:
         parser.add_argument(
             "--type",
-            options=["ttyd-tools", "old-fork", "modern-fork"],
+            options=["old-fork", "modern-fork"],
             default="modern-fork",
         )
         parser.add_argument(
@@ -734,7 +720,6 @@ def main(*, ttyd_tools=False):
 
     if ttyd_tools:
         behaviour = {
-            "ttyd-tools": ElfToRelBehaviour.TTYD_TOOLS,
             "old-fork": ElfToRelBehaviour.OLD_FORK,
             "modern-fork": ElfToRelBehaviour.MODERN_FORK,
         }[args.type]
