@@ -37,23 +37,23 @@ def test_spm_core():
     assert dat == expected
 
 
-def test_spm_practice_codes():
-    """Test that spm-practice-codes links the same way as in previous pyelf2rel commits"""
-
-    name = "spm-practice-codes-3974b24"
-    dat = link_rel(0x1000, name)
-    with open(f"tests/resources/{name}.rel", "rb") as rel:
-        expected = rel.read()
-
-    assert dat == expected
-
-
 def test_spm_core_modern_fork():
     """Tests that spm-core links the same way as in the modern spm-rel-loader elf2rel fork"""
 
     name = "spm-core-2fd38f5"
     dat = link_rel(2, name, ttyd_tools=True)
     with open(f"tests/resources/{name}_modern.rel", "rb") as rel:
+        expected = rel.read()
+
+    assert dat == expected
+
+
+def test_spm_practice_codes():
+    """Test that spm-practice-codes links the same way as in previous pyelf2rel commits"""
+
+    name = "spm-practice-codes-3974b24"
+    dat = link_rel(0x1000, name)
+    with open(f"tests/resources/{name}.rel", "rb") as rel:
         expected = rel.read()
 
     assert dat == expected
@@ -82,7 +82,7 @@ def test_spm_practice_codes_old_fork():
         "--old-fork",
         ttyd_tools=True,
     )
-    with open(f"tests/resources/{name}.rel", "rb") as rel:
+    with open(f"tests/resources/{name}_old.rel", "rb") as rel:
         expected = rel.read()
 
     assert dat == expected
@@ -97,7 +97,7 @@ def test_spm_practice_codes_ttyd_tools():
 
     name = "spm-practice-codes-642167b"
     dat = link_rel(0x1000, name, ttyd_tools=True)
-    with open(f"tests/resources/{name}.rel", "rb") as rel:
+    with open(f"tests/resources/{name}_ttydt.rel", "rb") as rel:
         expected = rel.read()
 
     assert dat == expected
