@@ -737,7 +737,7 @@ def main(*, ttyd_tools=False):
             "ttyd-tools": ElfToRelBehaviour.TTYD_TOOLS,
             "old-fork": ElfToRelBehaviour.OLD_FORK,
             "modern-fork": ElfToRelBehaviour.MODERN_FORK,
-        }[args.ttyd_tools_type]
+        }[args.type]
     else:
         behaviour = ElfToRelBehaviour.PYELF2REL
 
