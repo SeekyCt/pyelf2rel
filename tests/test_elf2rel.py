@@ -1,13 +1,29 @@
-from pyelf2rel.elf2rel import ElfToRelBehaviour, elf_to_rel
+import os
+from tempfile import TemporaryDirectory
+
+from pyelf2rel.elf2rel import main
 
 
-def link_rel(module_id: int, name: str, **kwargs) -> bytes:
+def link_rel(module_id: int, in_name: str, argv: str = "", *, ttyd_tools: bool = False) -> bytes:
     """Helper to build a rel with a specifc setup"""
 
-    with open(f"tests/resources/{name}.elf", "rb") as plf, open(
-        f"tests/resources/{name}.lst"
-    ) as sym:
-        return elf_to_rel(module_id, plf, sym, **kwargs)
+    with TemporaryDirectory() as d:
+        out_path = os.path.join(d, f"{in_name}.elf")
+
+        main(
+            [
+                f"tests/resources/{in_name}.elf",
+                f"tests/resources/{in_name}.lst",
+                out_path,
+                "--rel-id",
+                str(module_id),
+                *argv.split(),
+            ],
+            ttyd_tools=ttyd_tools,
+        )
+
+        with open(out_path, "rb") as f:
+            return f.read()
 
 
 def test_spm_core():
@@ -36,7 +52,7 @@ def test_spm_core_modern_fork():
     """Tests that spm-core links the same way as in the modern spm-rel-loader elf2rel fork"""
 
     name = "spm-core-2fd38f5"
-    dat = link_rel(2, name, behaviour=ElfToRelBehaviour.MODERN_FORK)
+    dat = link_rel(2, name, ttyd_tools=True)
     with open(f"tests/resources/{name}_modern.rel", "rb") as rel:
         expected = rel.read()
 
@@ -48,7 +64,7 @@ def test_spm_practice_codes_modern_fork():
     fork"""
 
     name = "spm-practice-codes-b94a94a"
-    dat = link_rel(0x1000, name, behaviour=ElfToRelBehaviour.MODERN_FORK)
+    dat = link_rel(0x1000, name, ttyd_tools=True)
     with open(f"tests/resources/{name}_modern.rel", "rb") as rel:
         expected = rel.read()
 
@@ -63,7 +79,8 @@ def test_spm_practice_codes_old_fork():
     dat = link_rel(
         0x1000,
         name,
-        behaviour=ElfToRelBehaviour.OLD_FORK,
+        "--old-fork",
+        ttyd_tools=True,
     )
     with open(f"tests/resources/{name}.rel", "rb") as rel:
         expected = rel.read()
@@ -79,7 +96,7 @@ def test_spm_practice_codes_ttyd_tools():
     to ttyd-tools under these conditions"""
 
     name = "spm-practice-codes-642167b"
-    dat = link_rel(0x1000, name, behaviour=ElfToRelBehaviour.MODERN_FORK)
+    dat = link_rel(0x1000, name, ttyd_tools=True)
     with open(f"tests/resources/{name}.rel", "rb") as rel:
         expected = rel.read()
 

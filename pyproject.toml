@@ -34,9 +34,9 @@ Homepage = "https://github.com/SeekyCt/pyelf2rel"
 Issues = "https://github.com/SeekyCt/pyelf2rel/issues"
 
 [project.scripts]
-elf2rel = 'pyelf2rel.elf2rel:ttyd_tools_main'
-pyelf2rel = 'pyelf2rel.elf2rel:main'
-makelst = 'pyelf2rel.makelst:main'
+elf2rel = 'pyelf2rel.elf2rel:entry_ttyd_tools'
+pyelf2rel = 'pyelf2rel.elf2rel:entry'
+makelst = 'pyelf2rel.makelst:entry'
 
 [tool.mypy]
 ignore_missing_imports = true

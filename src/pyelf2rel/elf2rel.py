@@ -4,6 +4,7 @@ from argparse import ArgumentError, ArgumentParser
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
+from sys import argv
 from typing import TYPE_CHECKING, Callable, TextIO, TypedDict
 
 from elftools.elf.constants import SH_FLAGS, SHN_INDICES
@@ -659,7 +660,7 @@ def elf_to_rel(
     return bytes(dat)
 
 
-def main(*, ttyd_tools=False):
+def main(argv: list[str], *, ttyd_tools=False):
     parser = ArgumentParser(description="Converts an ELF file to a REL file")
 
     input_file_help = "Input ELF path"
@@ -689,7 +690,7 @@ def main(*, ttyd_tools=False):
     else:
         parser.add_argument("--ignore-sections", nargs="+", default=[])
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     positionals = list(args.positionals) if ttyd_tools else []
 
@@ -733,9 +734,13 @@ def main(*, ttyd_tools=False):
         f.write(dat)
 
 
-def ttyd_tools_main():
-    main(ttyd_tools=True)
+def entry():
+    main(argv)
+
+
+def entry_ttyd_tools():
+    main(argv, ttyd_tools=True)
 
 
 if __name__ == "__main__":
-    main()
+    entry()
