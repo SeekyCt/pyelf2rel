@@ -682,11 +682,7 @@ def main(*, ttyd_tools=False):
     parser.add_argument("--rel-id", type=lambda x: int(x, 0), default=0x1000)
     parser.add_argument("--rel-version", type=int, default=3)
     if ttyd_tools:
-        parser.add_argument(
-            "--type",
-            options=["old-fork", "modern-fork"],
-            default="modern-fork",
-        )
+        parser.add_argument("--old-fork", action="store_true")
         parser.add_argument(
             "-x", help="Ignored, hack to support the TTYDTOOLS environment variable"
         )
@@ -719,10 +715,7 @@ def main(*, ttyd_tools=False):
         output_file = input_file.removesuffix(".elf") + ".rel"
 
     if ttyd_tools:
-        behaviour = {
-            "old-fork": ElfToRelBehaviour.OLD_FORK,
-            "modern-fork": ElfToRelBehaviour.MODERN_FORK,
-        }[args.type]
+        behaviour = ElfToRelBehaviour.OLD_FORK if args.old_fork else ElfToRelBehaviour.MODERN_FORK
     else:
         behaviour = ElfToRelBehaviour.PYELF2REL
 
