@@ -53,8 +53,8 @@ Run the following command to install the package.
 pip install pyelf2rel
 ```
 
-You will now have access to the `pyelf2rel`, `elf2rel` and `makelst` commands.
-Use each with `-h` for more information.
+You will now have access to the `pyelf2rel` and `makelst` commands (also the extra `elf2rel` command,
+see below for information). Use each with `-h` for more information.
 
 ### Using in place of ttyd-tools elf2rel
 
@@ -73,8 +73,8 @@ Multiple versions of the API and behaviour can be matched:
     - Notably, this includes support for the `offset:symbol?moduleId,sectionId` syntax
     - Like in the old fork, fixed linking is unsafe for rels produced by this
     - Support for the modern LST syntax isn't disabled while using this
-- Both modes are supersets of the original ttyd-tools elf2rel. When the extensions aren't used,
-either mode should behave identically to the original.
+- Both modes are supersets of the original ttyd-tools elf2rel, and should match the behaviour of it
+on projects which used it.
 
 ## License
 
