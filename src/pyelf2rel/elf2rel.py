@@ -71,10 +71,6 @@ class BehaviourDef(TypedDict):
     # Valid fix size calculated
     correct_fix_size: bool
 
-    # Allow cross-section compile-time branch relocation
-    # TODO: maybe always enable
-    extended_static_relocs: bool
-
     # Send run-time relocated branches to _unresolved
     unresolved_branches: bool
 
@@ -93,7 +89,6 @@ BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
         "hardcoded_section_names": False,
         "relocation_order": RelocationModuleOrder.PYELF2REL,
         "correct_fix_size": True,
-        "extended_static_relocs": False,
         "unresolved_branches": True,
         "imp_always_first": False,
         "aligned_imp": False,
@@ -103,7 +98,6 @@ BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
         "hardcoded_section_names": True,
         "relocation_order": RelocationModuleOrder.MODERN_FORK,
         "correct_fix_size": True,
-        "extended_static_relocs": True,
         "unresolved_branches": False,
         "imp_always_first": True,
         "aligned_imp": True,
@@ -113,7 +107,6 @@ BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
         "hardcoded_section_names": True,
         "relocation_order": RelocationModuleOrder.NONE,
         "correct_fix_size": False,
-        "extended_static_relocs": True,
         "unresolved_branches": False,
         "imp_always_first": True,
         "aligned_imp": True,
@@ -320,7 +313,6 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
         if (
             t in (RelType.REL24, RelType.REL32)
             and target.module_id == ctx.module_id
-            and (ctx.behaviour["extended_static_relocs"] or sec_id == target.section_id)
         ):
             skip_runtime = True
 
