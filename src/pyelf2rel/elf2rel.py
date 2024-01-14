@@ -310,10 +310,7 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
 
         # Check when to apply
         skip_runtime = False
-        if (
-            t in (RelType.REL24, RelType.REL32)
-            and target.module_id == ctx.module_id
-        ):
+        if t in (RelType.REL24, RelType.REL32) and target.module_id == ctx.module_id:
             skip_runtime = True
 
         rel_reloc = RelReloc(target.module_id, offs, t, target.section_id, target_offset)
