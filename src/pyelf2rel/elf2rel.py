@@ -670,7 +670,7 @@ def main(argv: list[str], *, ttyd_tools=False):
     # Recreate ttyd-tools mandatory positional API
     # boost::program_options behaves differently to argparse
     if ttyd_tools:
-        parser.add_argument("positionals", nargs="*")
+        parser.add_argument("positionals", nargs="*", help="input_file symbol_file [output_file]")
         arg_input_file = parser.add_argument("--input-file", "-i", help=input_file_help)
         arg_symbol_file = parser.add_argument("--symbol-file", "-s", help=symbol_file_help)
         parser.add_argument("--output-file", "-o", help=output_file_help)
@@ -680,15 +680,28 @@ def main(argv: list[str], *, ttyd_tools=False):
         parser.add_argument("output_file", nargs="?", help=output_file_help)
 
     # Optional
-    parser.add_argument("--rel-id", type=lambda x: int(x, 0), default=0x1000)
-    parser.add_argument("--rel-version", type=int, default=3)
+    parser.add_argument(
+        "--rel-id", type=lambda x: int(x, 0), default=0x1000, help="Module id of the output rel"
+    )
+    parser.add_argument(
+        "--rel-version", type=int, default=3, help="Format version of the output rel"
+    )
     if ttyd_tools:
-        parser.add_argument("--old-fork", action="store_true")
+        parser.add_argument(
+            "--old-fork",
+            action="store_true",
+            help="Match the behaviour of spm-rel-loader elf2rel-24-6-2021",
+        )
         parser.add_argument(
             "-x", help="Ignored, hack to support the TTYDTOOLS environment variable"
         )
     else:
-        parser.add_argument("--ignore-sections", nargs="+", default=[])
+        parser.add_argument(
+            "--ignore-sections",
+            nargs="+",
+            default=[],
+            help="Extra sections to strip from the output rel",
+        )
 
     args = parser.parse_args(argv)
 
