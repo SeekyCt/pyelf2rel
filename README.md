@@ -15,9 +15,7 @@
 
 pyelf2rel is a tool / library for creation of files in Nintendo's GameCube/Wii REL format.
 
-Also included is the makelst tool (TODO)
-
-## Alternatives
+### Alternatives
 
 - [ttyd-tools](https://github.com/PistonMiner/ttyd-tools/tree/master/ttyd-tools) has a C++
 implementation of ELF to REL conversion.
@@ -27,9 +25,25 @@ implementation of ELF to REL conversion.
     seems to be negligible
     - pyelf2rel can be configured to behave the same way as this tool (see
     [below](#using-in-place-of-ttyd-tools-elf2rel))
-- [ppcdis](https://github.com/SeekyCt/ppcdis) has a more specialised implementation of the
+- [ppcdis](https://github.com/SeekyCt/ppcdis) has a more specialised python implementation of the
 conversion designed for matching decompilation.
     - pyelf2rel is based off of this implementation and is more friendly for general use
+
+### Why make another elf2rel implementation?
+- ttyd-tools is a bit awkward to build, requiring Visual Studio (or manual setup on Linux) and Boost
+- Some legacy code requires specific fork builds of ttyd-tools elf2rel to work, all of those are
+supported by pyelf2rel
+- Upstream support for linking against other rels
+- Redirection of unlinked branches to _unresolved
+- Control over which sections to include and strip
+- This is easier to customise for projects to extend the format
+    - Some kind of built-in metadata extension may be coming at some point
+
+### makelst
+
+Also included is the makelst tool, which can generate LST symbol maps based on global symbols in ELFs
+and existing LSTs, for use with this or ttyd-tools elf2rel.
+
 
 ## Installation
 
@@ -38,6 +52,9 @@ Run the following command to install the package.
 ```console
 pip install pyelf2rel
 ```
+
+You will now have access to the `pyelf2rel`, `elf2rel` and `makelst` commands.
+Use each with `-h` for more information.
 
 ### Using in place of ttyd-tools elf2rel
 
