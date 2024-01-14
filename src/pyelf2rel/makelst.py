@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from argparse import ArgumentError, ArgumentParser
-from sys import stdout
-from typing import TYPE_CHECKING, Iterable
+from sys import argv, stdout
+from typing import TYPE_CHECKING, Iterable, TextIO
 
 from elftools.elf.constants import SHN_INDICES
 from elftools.elf.elffile import ELFFile
@@ -62,20 +62,24 @@ def make_lst(
     )
 
 
-def main():
+def main(argv: list[str], out: TextIO = stdout):
     parser = ArgumentParser(description="Makes an LST by combining symbosl from ELFs and LSTs")
     arg_elf = parser.add_argument(
         "--elf", type=str, nargs="+", default=[], help="Input module id and elf path pairs"
     )
     parser.add_argument("--lst", type=str, nargs="+", default=[], help="Input lst paths")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if len(args.elf or []) % 2 != 0:
         raise ArgumentError(arg_elf, "Inputs require a module id and path for each entry")
     elfs = [(int(module_id), path) for module_id, path in pairwise(args.elf)]
 
-    stdout.write(make_lst(elfs=elfs, lsts=args.lst))
+    out.write(make_lst(elfs=elfs, lsts=args.lst))
+
+
+def entry():
+    main(argv[1:])
 
 
 if __name__ == "__main__":
-    main()
+    entry()
