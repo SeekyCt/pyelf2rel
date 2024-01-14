@@ -63,7 +63,7 @@ def make_lst(
 
 
 def main(argv: list[str], out: TextIO = stdout):
-    parser = ArgumentParser(description="Makes an LST by combining symbosl from ELFs and LSTs")
+    parser = ArgumentParser(description="Makes an LST by combining symbols from ELFs and LSTs")
     arg_elf = parser.add_argument(
         "--elf", type=str, nargs="+", default=[], help="Input module id and elf path pairs"
     )

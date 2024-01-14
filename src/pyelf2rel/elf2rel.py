@@ -78,7 +78,7 @@ class BehaviourDef(TypedDict):
     # Send run-time relocated branches to _unresolved
     unresolved_branches: bool
 
-    # Whether to always placethe imp section is always placed before the relocations
+    # Whether to always place the imp section is always placed before the relocations
     # If false, version 1 and 2 will place relocations first
     imp_always_first: bool
 
