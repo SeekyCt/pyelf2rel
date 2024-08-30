@@ -1,5 +1,5 @@
 """
-    LST symbol map loading and encoding
+LST symbol map loading and encoding
 """
 
 from __future__ import annotations

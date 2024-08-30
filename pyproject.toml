@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling == 1.25.0", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
@@ -98,6 +98,6 @@ exclude_lines = [
 
 [tool.ruff]
 line-length = 100
-ignore = [
+lint.ignore = [
   "RET505"
 ]

@@ -1,5 +1,5 @@
 """
-    REL file format constants and structures
+REL file format constants and structures
 """
 
 from __future__ import annotations

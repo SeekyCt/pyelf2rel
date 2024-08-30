@@ -1,5 +1,5 @@
 """
-    Faster pyelftools substitutes
+Faster pyelftools substitutes
 """
 
 from __future__ import annotations
