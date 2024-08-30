@@ -147,6 +147,7 @@ class Context:
         *,
         version: int = 3,
         behaviour: ElfToRelBehaviour = ElfToRelBehaviour.PYELF2REL,
+        block_duplicates: bool = False,
     ):
         self.module_id = module_id
         self.version = version
@@ -155,20 +156,21 @@ class Context:
         self.plf = ELFFile(self.file)
 
         self.symbols = read_symbols(self.file, self.plf)
-        self.symbol_map = map_elf_symbols(self.symbols)
+        self.symbol_map = map_elf_symbols(self.symbols, block_duplicates=block_duplicates)
 
         self.behaviour = BEHAVIOURS[behaviour]
 
         lst_txt = lst_file.read()
         lst = load_lst(lst_txt, support_old_fork=self.behaviour["old_fork_lsts"])
-        self.lst_symbols = map_rel_symbols(lst)
+        self.lst_symbols = map_rel_symbols(lst, block_duplicates=block_duplicates)
 
-        overlap = self.symbol_map.keys() & self.lst_symbols.keys()
-        if len(overlap) > 0:
-            raise DuplicateSymbolError(overlap)
+        if block_duplicates:
+            overlap = self.symbol_map.keys() & self.lst_symbols.keys()
+            if len(overlap) > 0:
+                raise DuplicateSymbolError(overlap)
 
 
-def map_elf_symbols(symbols: list[Symbol]) -> dict[str, Symbol]:
+def map_elf_symbols(symbols: list[Symbol], *, block_duplicates: bool = False) -> dict[str, Symbol]:
     """Creates a dict of global symbols by name"""
 
     ret = {}
@@ -186,13 +188,15 @@ def map_elf_symbols(symbols: list[Symbol]) -> dict[str, Symbol]:
             else:
                 ret[sym.name] = sym
 
-    if len(duplicates) > 0:
+    if block_duplicates and len(duplicates) > 0:
         raise DuplicateSymbolError(duplicates)
 
     return ret
 
 
-def map_rel_symbols(symbols: list[RelSymbol]) -> dict[str, RelSymbol]:
+def map_rel_symbols(
+    symbols: list[RelSymbol], *, block_duplicates: bool = False
+) -> dict[str, RelSymbol]:
     """Creates a dict of symbols by name"""
 
     ret = {}
@@ -204,7 +208,7 @@ def map_rel_symbols(symbols: list[RelSymbol]) -> dict[str, RelSymbol]:
         else:
             ret[sym.name] = sym
 
-    if len(duplicates) > 0:
+    if block_duplicates and len(duplicates) > 0:
         raise DuplicateSymbolError(duplicates)
 
     return ret
@@ -557,6 +561,7 @@ def elf_to_rel(
     version: int = 3,
     behaviour: ElfToRelBehaviour = ElfToRelBehaviour.PYELF2REL,
     ignore_sections: list[str] | None = None,
+    block_duplicates: bool = False,
 ) -> bytes:
     """Converts a partially linked elf file into a rel file"""
 
@@ -565,7 +570,14 @@ def elf_to_rel(
         ignore_sections = []
 
     # Build context
-    ctx = Context(module_id, elf_file, lst_file, version=version, behaviour=behaviour)
+    ctx = Context(
+        module_id,
+        elf_file,
+        lst_file,
+        version=version,
+        behaviour=behaviour,
+        block_duplicates=block_duplicates,
+    )
 
     # Give space for header
     file_pos = RelHeader.binary_size(version)
@@ -691,6 +703,11 @@ def main(argv: list[str], *, ttyd_tools=False):
             default=[],
             help="Extra sections to strip from the output rel",
         )
+        parser.add_argument(
+            "--block-duplicates",
+            action="store_true",
+            help="Throw an error when finding duplicated symbols",
+        )
 
     args = parser.parse_args(argv)
 
@@ -730,6 +747,7 @@ def main(argv: list[str], *, ttyd_tools=False):
             version=args.rel_version,
             ignore_sections=None if ttyd_tools else args.ignore_sections,
             behaviour=behaviour,
+            block_duplicates=False if ttyd_tools else args.block_duplicates,
         )
 
     with open(output_file, "wb") as f:
