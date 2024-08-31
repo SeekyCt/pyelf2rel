@@ -2,3 +2,7 @@ __pycache__
 build
 *.egg-info
 dist
+*.rel
+*.elf
+*.lst
+*.exe
