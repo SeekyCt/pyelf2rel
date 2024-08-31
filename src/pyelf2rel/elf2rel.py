@@ -340,26 +340,33 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
 
 def build_section_contents(
     ctx: Context, file_pos: int, sections: list[BinarySection]
-) -> tuple[int, bytes, dict[int, int]]:
+) -> tuple[int, bytes, dict[int, int], int, int]:
     """Create the linked binary data for the sections
 
-    Returns new file position, linked data, and the file offsets of each section"""
+    Returns new file position, linked data, the file offsets of each section, rel alignment and bss alignment"""
 
     # Concatenate section contents, respecting alignment
     dat = bytearray()
     offsets = {}  # positions in file
     internal_offsets = {}  # positions in dat
+    align = 0
+    bss_align = 0
     for section in sections:
-        if section.header["sh_type"] != "SHT_PROGBITS":
-            continue
+        # Force minimum alignment of 2 to avoid offset containing exec flag
+        sec_align = max(section.header["sh_addralign"], 2)
 
-        file_pos, padding = align_to(file_pos, section.header["sh_addralign"])
-        dat.extend(bytes(padding))
+        if section.header["sh_type"] == "SHT_NOBITS":
+            bss_align = max(bss_align, sec_align)
+        elif section.header["sh_type"] == "SHT_PROGBITS":
+            align = max(align, sec_align)
 
-        offsets[section.sec_id] = file_pos
-        internal_offsets[section.sec_id] = len(dat)
-        file_pos += section.header["sh_size"]
-        dat.extend(section.contents)
+            file_pos, padding = align_to(file_pos, sec_align)
+            dat.extend(bytes(padding))
+
+            offsets[section.sec_id] = file_pos
+            internal_offsets[section.sec_id] = len(dat)
+            file_pos += section.header["sh_size"]
+            dat.extend(section.contents)
 
     def early_relocate(t: RelType, sec_id: int, offset: int, target_sec_id: int, target: int):
         """Apply a relocation at compile time to a section"""
@@ -393,7 +400,7 @@ def build_section_contents(
                         reloc.t, sec.sec_id, reloc.offset, unresolved.st_shndx, unresolved.st_value
                     )
 
-    return file_pos, bytes(dat), offsets
+    return file_pos, bytes(dat), offsets, align, bss_align
 
 
 def build_section_info(sections: list[BinarySection | None], offsets: dict[int, int]) -> bytes:
@@ -595,7 +602,13 @@ def elf_to_rel(
     file_pos += section_info_size
 
     # Build section contents
-    file_pos, section_contents, section_offsets = build_section_contents(ctx, file_pos, sections)
+    (
+        file_pos,
+        section_contents,
+        section_offsets,
+        align,
+        bss_align,
+    ) = build_section_contents(ctx, file_pos, sections)
 
     # Build section table
     section_info = build_section_info(all_sections, section_offsets)
@@ -610,12 +623,6 @@ def elf_to_rel(
     # Find bss section
     bss_sections = [sec for sec in sections if sec.header["sh_type"] == "SHT_NOBITS"]
     bss_size = sum(s.header["sh_size"] for s in bss_sections)
-
-    # Calculate alignment
-    align = max(
-        sec.header["sh_addralign"] for sec in sections if sec.header["sh_type"] == "SHT_PROGBITS"
-    )
-    bss_align = max(s.header["sh_addralign"] for s in bss_sections) if len(bss_sections) > 0 else 0
 
     # Gather export info
     try:
