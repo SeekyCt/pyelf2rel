@@ -15,6 +15,7 @@ from pyelf2rel.elf import Symbol, read_relocs, read_symbols
 from pyelf2rel.error import (
     DuplicateSymbolError,
     MissingSymbolError,
+    MissingSymbolsError,
     UnsupportedRelocationError,
 )
 from pyelf2rel.lst import load_lst
@@ -280,7 +281,7 @@ class BinarySection:
     static_relocs: list[RelReloc]
 
 
-def parse_section(ctx: Context, sec_id: int) -> BinarySection:
+def parse_section(ctx: Context, sec_id: int, missing_symbols: set) -> BinarySection:
     """Extract the contents and relocations for a section"""
 
     # Get section
@@ -312,7 +313,11 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
             continue
 
         offs = reloc.r_offset
-        target = find_symbol(ctx, reloc.r_info_sym)
+        try:
+            target = find_symbol(ctx, reloc.r_info_sym)
+        except MissingSymbolError as e:
+            missing_symbols.add(e.symbol)
+            continue
         target_offset = target.offset + reloc.r_addend
 
         # Check when to apply
@@ -594,10 +599,13 @@ def elf_to_rel(
     section_info_offset = file_pos
 
     # Parse sections
+    missing_symbols = set()
     all_sections = [
-        parse_section(ctx, sec_id) if should_include_section(ctx, sec_id, ignore_sections) else None
+        parse_section(ctx, sec_id, missing_symbols) if should_include_section(ctx, sec_id, ignore_sections) else None
         for sec_id in range(ctx.plf.num_sections())
     ]
+    if len(missing_symbols) > 0:
+        raise MissingSymbolsError(missing_symbols)
     sections = [sec for sec in all_sections if sec is not None]
 
     # Give space for section info

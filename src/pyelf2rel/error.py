@@ -4,7 +4,7 @@ Project-specific errors
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Set
 
 
 class DuplicateSymbolError(Exception):
@@ -47,8 +47,20 @@ class LSTCommaError(LSTFormatError):
 class MissingSymbolError(Exception):
     """A required symbol was not defined"""
 
+    symbol: str
+
     def __init__(self, symbol: str):
         super().__init__(f"Missing symbol {symbol}")
+        self.symbol = symbol
+
+
+class MissingSymbolsError(Exception):
+    """A required symbol was not defined"""
+
+    symbols: Set[str]
+
+    def __init__(self, symbols: Set[str]):
+        super().__init__(f"Missing symbols: {', '.join(symbols)}")
 
 
 class UnsupportedRelocationError(Exception):

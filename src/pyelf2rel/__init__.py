@@ -3,6 +3,7 @@ from pyelf2rel.error import (
     DuplicateSymbolError,
     LSTFormatError,
     MissingSymbolError,
+    MissingSymbolsError,
     UnsupportedRelocationError,
 )
 from pyelf2rel.lst import dump_lst, dump_lst_symbol, load_lst, load_lst_symbol
@@ -14,6 +15,7 @@ __all__ = [
     "DuplicateSymbolError",
     "LSTFormatError",
     "MissingSymbolError",
+    "MissingSymbolsError",
     "UnsupportedRelocationError",
     "load_lst",
     "load_lst_symbol",
