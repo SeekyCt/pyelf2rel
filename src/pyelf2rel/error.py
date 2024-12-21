@@ -54,5 +54,5 @@ class MissingSymbolError(Exception):
 class UnsupportedRelocationError(Exception):
     """An unsupported relocation type was used"""
 
-    def __init__(self, reloc_type: int):
+    def __init__(self, reloc_type: str):
         super().__init__(f"Unsupported relocation type {reloc_type}")

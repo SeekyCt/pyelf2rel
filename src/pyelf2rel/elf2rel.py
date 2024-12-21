@@ -304,7 +304,10 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
 
     # Build relocation lists
     for reloc in read_relocs(ctx.file, rela):
-        t = RelType(reloc.r_info_type)
+        try:
+            t = RelType(reloc.r_info_type)
+        except ValueError as e:
+            raise UnsupportedRelocationError(str(reloc.r_info_type))
         if t == RelType.NONE:
             continue
 
@@ -331,7 +334,7 @@ def parse_section(ctx: Context, sec_id: int) -> BinarySection:
                 RelType.REL14,
                 RelType.REL32,
             ):
-                raise UnsupportedRelocationError(t)
+                raise UnsupportedRelocationError(t.name)
 
             runtime_relocs.append(rel_reloc)
 
