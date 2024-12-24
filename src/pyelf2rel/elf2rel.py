@@ -83,6 +83,10 @@ class BehaviourDef(TypedDict):
     # TODO: maybe always align, and this just toggles the round up bug
     aligned_imp: bool
 
+    # If there's more than 1 bss section, set the biggest as the 'real' bss section and bake the
+    # others into the rel as blocks of zeroes
+    bake_multi_bss: bool
+
 
 BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
     ElfToRelBehaviour.PYELF2REL: {
@@ -93,6 +97,7 @@ BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
         "unresolved_branches": True,
         "imp_always_first": False,
         "aligned_imp": False,
+        "bake_multi_bss": True,
     },
     ElfToRelBehaviour.MODERN_FORK: {
         "old_fork_lsts": False,
@@ -102,6 +107,7 @@ BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
         "unresolved_branches": False,
         "imp_always_first": True,
         "aligned_imp": True,
+        "bake_multi_bss": False,
     },
     ElfToRelBehaviour.OLD_FORK: {
         "old_fork_lsts": True,
@@ -111,6 +117,7 @@ BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
         "unresolved_branches": False,
         "imp_always_first": True,
         "aligned_imp": True,
+        "bake_multi_bss": False,
     },
 }
 
@@ -347,7 +354,7 @@ def parse_section(ctx: Context, sec_id: int, missing_symbols: set) -> BinarySect
 
 
 def build_section_contents(
-    ctx: Context, file_pos: int, sections: list[BinarySection]
+    ctx: Context, file_pos: int, sections: list[BinarySection], baked_bss: list[BinarySection]
 ) -> tuple[int, bytes, dict[int, int], int, int]:
     """Create the linked binary data for the sections
 
@@ -363,18 +370,25 @@ def build_section_contents(
         # Force minimum alignment of 2 to avoid offset containing exec flag
         sec_align = max(section.header["sh_addralign"], 2)
 
+        contents = None
         if section.header["sh_type"] == "SHT_NOBITS":
-            bss_align = max(bss_align, sec_align)
+            if section in baked_bss:
+                align = max(align, sec_align)
+                contents = bytes(section.header["sh_size"])
+            else:
+                bss_align = max(bss_align, sec_align)
         elif section.header["sh_type"] == "SHT_PROGBITS":
             align = max(align, sec_align)
+            contents = section.contents
 
+        if contents is not None:
             file_pos, padding = align_to(file_pos, sec_align)
             dat.extend(bytes(padding))
 
             offsets[section.sec_id] = file_pos
             internal_offsets[section.sec_id] = len(dat)
             file_pos += section.header["sh_size"]
-            dat.extend(section.contents)
+            dat.extend(contents)
 
     def early_relocate(t: RelType, sec_id: int, offset: int, target_sec_id: int, target: int):
         """Apply a relocation at compile time to a section"""
@@ -612,14 +626,25 @@ def elf_to_rel(
     section_info_size = RelSectionInfo.binary_size(len(all_sections))
     file_pos += section_info_size
 
+    # Find bss section
+    bss_sections = [sec for sec in sections if sec.header["sh_type"] == "SHT_NOBITS"]
+    if ctx.behaviour["bake_multi_bss"]:
+        baked_bss = sorted(bss_sections, key=lambda sec: sec.header["sh_size"])
+        real_bss = baked_bss.pop(-1)
+        bss_size = real_bss.header["sh_size"]
+    else:
+        bss_size = sum(s.header["sh_size"] for s in bss_sections)
+        baked_bss = []
+
+
     # Build section contents
     (
         file_pos,
         section_contents,
         section_offsets,
         align,
-        bss_align,
-    ) = build_section_contents(ctx, file_pos, sections)
+        bss_align
+    ) = build_section_contents(ctx, file_pos, sections, baked_bss)
 
     # Build section table
     section_info = build_section_info(all_sections, section_offsets)
@@ -630,10 +655,6 @@ def elf_to_rel(
 
     # Build reloc contents
     file_pos, relocation_info = build_relocations(ctx, file_pos, module_relocs)
-
-    # Find bss section
-    bss_sections = [sec for sec in sections if sec.header["sh_type"] == "SHT_NOBITS"]
-    bss_size = sum(s.header["sh_size"] for s in bss_sections)
 
     # Gather export info
     try:
