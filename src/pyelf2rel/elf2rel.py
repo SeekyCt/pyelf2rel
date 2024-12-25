@@ -288,7 +288,7 @@ class BinarySection:
     static_relocs: list[RelReloc]
 
 
-def parse_section(ctx: Context, sec_id: int, missing_symbols: set) -> BinarySection:
+def parse_section(ctx: Context, sec_id: int, missing_symbols: set[str]) -> BinarySection:
     """Extract the contents and relocations for a section"""
 
     # Get section
@@ -613,7 +613,7 @@ def elf_to_rel(
     section_info_offset = file_pos
 
     # Parse sections
-    missing_symbols = set()
+    missing_symbols: set[str] = set()
     all_sections = [
         parse_section(ctx, sec_id, missing_symbols)
         if should_include_section(ctx, sec_id, ignore_sections)
