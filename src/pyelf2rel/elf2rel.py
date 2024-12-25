@@ -315,7 +315,7 @@ def parse_section(ctx: Context, sec_id: int, missing_symbols: set) -> BinarySect
         try:
             t = RelType(reloc.r_info_type)
         except ValueError as e:
-            raise UnsupportedRelocationError(str(reloc.r_info_type))
+            raise UnsupportedRelocationError(str(reloc.r_info_type)) from e
         if t == RelType.NONE:
             continue
 
@@ -615,7 +615,9 @@ def elf_to_rel(
     # Parse sections
     missing_symbols = set()
     all_sections = [
-        parse_section(ctx, sec_id, missing_symbols) if should_include_section(ctx, sec_id, ignore_sections) else None
+        parse_section(ctx, sec_id, missing_symbols)
+        if should_include_section(ctx, sec_id, ignore_sections)
+        else None
         for sec_id in range(ctx.plf.num_sections())
     ]
     if len(missing_symbols) > 0:
@@ -636,15 +638,10 @@ def elf_to_rel(
         bss_size = sum(s.header["sh_size"] for s in bss_sections)
         baked_bss = []
 
-
     # Build section contents
-    (
-        file_pos,
-        section_contents,
-        section_offsets,
-        align,
-        bss_align
-    ) = build_section_contents(ctx, file_pos, sections, baked_bss)
+    (file_pos, section_contents, section_offsets, align, bss_align) = build_section_contents(
+        ctx, file_pos, sections, baked_bss
+    )
 
     # Build section table
     section_info = build_section_info(all_sections, section_offsets)

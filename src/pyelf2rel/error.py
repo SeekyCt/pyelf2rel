@@ -4,7 +4,7 @@ Project-specific errors
 
 from __future__ import annotations
 
-from typing import Iterable, Set
+from typing import Iterable
 
 
 class DuplicateSymbolError(Exception):
@@ -57,9 +57,9 @@ class MissingSymbolError(Exception):
 class MissingSymbolsError(Exception):
     """A required symbol was not defined"""
 
-    symbols: Set[str]
+    symbols: set[str]
 
-    def __init__(self, symbols: Set[str]):
+    def __init__(self, symbols: set[str]):
         super().__init__(f"Missing symbols: {', '.join(symbols)}")
 
 
