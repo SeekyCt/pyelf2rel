@@ -241,25 +241,22 @@ def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
 
     # Find symbol location
     sec = sym.st_shndx
-    if sec == SHN_INDICES.SHN_UNDEF:
-        # Symbol in dol or other rel
-        if sym.name in ctx.lst_symbols:
-            return ctx.lst_symbols[sym.name]
+    if sec != SHN_INDICES.SHN_UNDEF:
+        # Symbol in this rel
+        return RelSymbol(ctx.module_id, sec, sym.st_value, sym.name)
 
-        # Undefined weak symbol
-        if (
-            ctx.missing_weak != MissingWeakMode.ERROR
-            and sym.st_bind == ENUM_ST_INFO_BIND["STB_WEAK"]
-        ):
-            if ctx.missing_weak == MissingWeakMode.WARN:
-                print(f"Warning: treating missing weak symbol {sym.name} as null")  # noqa: T201
+    # Symbol in dol or other rel
+    if sym.name in ctx.lst_symbols:
+        return ctx.lst_symbols[sym.name]
 
-            return RelSymbol(0, 0, 0, sym.name)
+    # Undefined weak symbol
+    if ctx.missing_weak != MissingWeakMode.ERROR and sym.st_bind == ENUM_ST_INFO_BIND["STB_WEAK"]:
+        if ctx.missing_weak == MissingWeakMode.WARN:
+            print(f"Warning: treating missing weak symbol {sym.name} as null")  # noqa: T201
 
-        raise MissingSymbolError(sym.name)
+        return RelSymbol(0, 0, 0, sym.name)
 
-    # Symbol in this rel
-    return RelSymbol(ctx.module_id, sec, sym.st_value, sym.name)
+    raise MissingSymbolError(sym.name)
 
 
 def should_include_section(ctx: Context, sec_id: int, ignore_sections: list[str]) -> bool:
