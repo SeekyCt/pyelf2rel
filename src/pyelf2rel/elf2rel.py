@@ -3,7 +3,7 @@ from __future__ import annotations
 from argparse import ArgumentError, ArgumentParser
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import Enum, StrEnum
+from enum import Enum
 from sys import argv
 from typing import TYPE_CHECKING, Callable, TextIO, TypedDict
 
@@ -122,7 +122,7 @@ BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
 }
 
 
-class MissingWeakMode(StrEnum):
+class MissingWeakMode(Enum):
     ERROR = "error"
     WARN = "warn"
     IGNORE = "ignore"
