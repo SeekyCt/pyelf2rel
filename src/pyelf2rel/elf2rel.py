@@ -3,7 +3,7 @@ from __future__ import annotations
 from argparse import ArgumentError, ArgumentParser
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from sys import argv
 from typing import TYPE_CHECKING, Callable, TextIO, TypedDict
 
@@ -122,6 +122,12 @@ BEHAVIOURS: dict[ElfToRelBehaviour, BehaviourDef] = {
 }
 
 
+class MissingWeakMode(StrEnum):
+    ERROR = "error"
+    WARN = "warn"
+    IGNORE = "ignore"
+
+
 class Context:
     """Utility struct for passing common data between the conversion functions"""
 
@@ -147,6 +153,8 @@ class Context:
     # Toggles for matching legacy behaviour
     behaviour: BehaviourDef
 
+    missing_weak: MissingWeakMode
+
     def __init__(
         self,
         module_id: int,
@@ -156,6 +164,7 @@ class Context:
         version: int = 3,
         behaviour: ElfToRelBehaviour = ElfToRelBehaviour.PYELF2REL,
         block_duplicates: bool = False,
+        missing_weak: MissingWeakMode = MissingWeakMode.ERROR,
     ):
         self.module_id = module_id
         self.version = version
@@ -176,6 +185,8 @@ class Context:
             overlap = self.symbol_map.keys() & self.lst_symbols.keys()
             if len(overlap) > 0:
                 raise DuplicateSymbolError(overlap)
+
+        self.missing_weak = missing_weak
 
 
 def map_elf_symbols(symbols: list[Symbol], *, block_duplicates: bool = False) -> dict[str, Symbol]:
@@ -232,12 +243,23 @@ def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
     sec = sym.st_shndx
     if sec == SHN_INDICES.SHN_UNDEF:
         # Symbol in dol or other rel
-        if sym.name not in ctx.lst_symbols:
-            raise MissingSymbolError(sym.name)
-        return ctx.lst_symbols[sym.name]
-    else:
-        # Symbol in this rel
-        return RelSymbol(ctx.module_id, sec, sym.st_value, sym.name)
+        if sym.name in ctx.lst_symbols:
+            return ctx.lst_symbols[sym.name]
+
+        # Undefined weak symbol
+        if (
+            ctx.missing_weak != MissingWeakMode.ERROR
+            and sym.st_bind == ENUM_ST_INFO_BIND["STB_WEAK"]
+        ):
+            if ctx.missing_weak == MissingWeakMode.WARN:
+                print(f"Warning: treating missing weak symbol {sym.name} as null")  # noqa: T201
+
+            return RelSymbol(0, 0, 0, sym.name)
+
+        raise MissingSymbolError(sym.name)
+
+    # Symbol in this rel
+    return RelSymbol(ctx.module_id, sec, sym.st_value, sym.name)
 
 
 def should_include_section(ctx: Context, sec_id: int, ignore_sections: list[str]) -> bool:
@@ -591,6 +613,7 @@ def elf_to_rel(
     behaviour: ElfToRelBehaviour = ElfToRelBehaviour.PYELF2REL,
     ignore_sections: list[str] | None = None,
     block_duplicates: bool = False,
+    missing_weak: MissingWeakMode = MissingWeakMode.ERROR,
 ) -> bytes:
     """Converts a partially linked elf file into a rel file"""
 
@@ -606,6 +629,7 @@ def elf_to_rel(
         version=version,
         behaviour=behaviour,
         block_duplicates=block_duplicates,
+        missing_weak=missing_weak,
     )
 
     # Give space for header
@@ -744,6 +768,12 @@ def main(argv: list[str], *, ttyd_tools=False):
             action="store_true",
             help="Throw an error when finding duplicated symbols",
         )
+        parser.add_argument(
+            "--missing-weak",
+            default=MissingWeakMode.ERROR,
+            choices=[m.value for m in MissingWeakMode],
+            help="Block/Warn/Ignore missing weak symbols",
+        )
 
     args = parser.parse_args(argv)
 
@@ -784,6 +814,7 @@ def main(argv: list[str], *, ttyd_tools=False):
             ignore_sections=None if ttyd_tools else args.ignore_sections,
             behaviour=behaviour,
             block_duplicates=False if ttyd_tools else args.block_duplicates,
+            missing_weak=MissingWeakMode.ERROR if ttyd_tools else args.missing_weak,
         )
 
     with open(output_file, "wb") as f:
