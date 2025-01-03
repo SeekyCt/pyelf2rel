@@ -99,5 +99,6 @@ exclude_lines = [
 [tool.ruff]
 line-length = 100
 lint.ignore = [
-  "RET505"
+  "RET505",
+  "UP007", # Hatch force-enables, but it's not usable in python <3.10
 ]

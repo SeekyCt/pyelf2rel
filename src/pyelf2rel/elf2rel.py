@@ -14,7 +14,6 @@ from elftools.elf.enums import ENUM_ST_INFO_BIND
 from pyelf2rel.elf import Symbol, read_relocs, read_symbols
 from pyelf2rel.error import (
     DuplicateSymbolError,
-    MissingSymbolError,
     MissingSymbolsError,
     UnsupportedRelocationError,
 )
@@ -127,6 +126,7 @@ class MissingSymbolMode(Enum):
     WARN = "warn"
     IGNORE = "ignore"
 
+
 class Context:
     """Utility struct for passing common data between the conversion functions"""
 
@@ -227,7 +227,9 @@ def map_rel_symbols(
     return ret
 
 
-def find_symbol(ctx: Context, sym_id: int, missing_symbols: set[str], missing_weak_symbols: set[str]) -> RelSymbol:
+def find_symbol(
+    ctx: Context, sym_id: int, missing_symbols: set[str], missing_weak_symbols: set[str]
+) -> RelSymbol:
     """Finds a symbol by id"""
 
     # Get symbol
@@ -300,7 +302,9 @@ class BinarySection:
     static_relocs: list[RelReloc]
 
 
-def parse_section(ctx: Context, sec_id: int, missing_symbols: set[str], missing_weak_symbols: set[str]) -> BinarySection:
+def parse_section(
+    ctx: Context, sec_id: int, missing_symbols: set[str], missing_weak_symbols: set[str]
+) -> BinarySection:
     """Extract the contents and relocations for a section"""
 
     # Get section
