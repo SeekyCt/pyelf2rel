@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from argparse import ArgumentError, ArgumentParser
+from argparse import ArgumentParser
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
@@ -755,12 +755,12 @@ def main(argv: list[str], *, ttyd_tools=False):
     # boost::program_options behaves differently to argparse
     if ttyd_tools:
         parser.add_argument("positionals", nargs="*", help="input_file symbol_file [output_file]")
-        arg_input_file = parser.add_argument("--input-file", "-i", help=input_file_help)
-        arg_symbol_file = parser.add_argument("--symbol-file", "-s", help=symbol_file_help)
+        parser.add_argument("--input-file", "-i", help=input_file_help)
+        parser.add_argument("--symbol-file", "-s", help=symbol_file_help)
         parser.add_argument("--output-file", "-o", help=output_file_help)
     else:
-        arg_input_file = parser.add_argument("input_file", help=input_file_help)
-        arg_symbol_file = parser.add_argument("symbol_file", help=symbol_file_help)
+        parser.add_argument("input_file", help=input_file_help)
+        parser.add_argument("symbol_file", help=symbol_file_help)
         parser.add_argument("output_file", nargs="?", help=output_file_help)
 
     # Optional
@@ -811,14 +811,14 @@ def main(argv: list[str], *, ttyd_tools=False):
         input_file = positionals.pop(0)
     else:
         if args.input_file is None:
-            raise ArgumentError(arg_input_file, "input-file is required")
+            parser.error("input-file is required")
         input_file = args.input_file
 
     if len(positionals) > 0:
         symbol_file = positionals.pop(0)
     else:
         if args.symbol_file is None:
-            raise ArgumentError(arg_symbol_file, "symbol-file is required")
+            parser.error("symbol-file is required")
         symbol_file = args.symbol_file
 
     if len(positionals) > 0:
