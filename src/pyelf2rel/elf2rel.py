@@ -811,7 +811,7 @@ def main(argv: list[str], *, ttyd_tools=False):
             ignore_sections=None if ttyd_tools else args.ignore_sections,
             behaviour=behaviour,
             block_duplicates=False if ttyd_tools else args.block_duplicates,
-            missing_weak=MissingWeakMode.ERROR if ttyd_tools else args.missing_weak,
+            missing_weak=MissingWeakMode.ERROR if ttyd_tools else MissingWeakMode(args.missing_weak),
         )
 
     with open(output_file, "wb") as f:
