@@ -4,7 +4,10 @@ Random utilities
 
 from __future__ import annotations
 
-from typing import Iterable, TypeVar
+from typing import TYPE_CHECKING, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 T = TypeVar("T")
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from argparse import ArgumentError, ArgumentParser
 from sys import argv, stdout
-from typing import TYPE_CHECKING, Iterable, TextIO
+from typing import TYPE_CHECKING, TextIO
 
 from elftools.elf.constants import SHN_INDICES
 from elftools.elf.elffile import ELFFile
@@ -14,6 +14,7 @@ from pyelf2rel.rel import RelSymbol
 from pyelf2rel.util import pairwise
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from typing import BinaryIO
 
 
