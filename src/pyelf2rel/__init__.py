@@ -1,4 +1,4 @@
-from pyelf2rel.elf2rel import ElfToRelBehaviour, MissingWeakMode, elf_to_rel
+from pyelf2rel.elf2rel import ElfToRelBehaviour, MissingSymbolMode, elf_to_rel
 from pyelf2rel.error import (
     DuplicateSymbolError,
     LSTFormatError,
@@ -11,7 +11,7 @@ from pyelf2rel.rel import RelSymbol
 
 __all__ = [
     "ElfToRelBehaviour",
-    "MissingWeakMode",
+    "MissingSymbolMode",
     "elf_to_rel",
     "DuplicateSymbolError",
     "LSTFormatError",
