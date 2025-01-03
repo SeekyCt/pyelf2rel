@@ -152,9 +152,6 @@ class Context:
     # Toggles for matching legacy behaviour
     behaviour: BehaviourDef
 
-    missing_mode: MissingSymbolMode
-    weak_mode: MissingSymbolMode
-
     def __init__(
         self,
         module_id: int,
@@ -164,8 +161,6 @@ class Context:
         version: int = 3,
         behaviour: ElfToRelBehaviour = ElfToRelBehaviour.PYELF2REL,
         block_duplicates: bool = False,
-        missing_mode: MissingSymbolMode = MissingSymbolMode.ERROR,
-        weak_mode: Optional[MissingSymbolMode] = None,
     ):
         self.module_id = module_id
         self.version = version
@@ -186,12 +181,6 @@ class Context:
             overlap = self.symbol_map.keys() & self.lst_symbols.keys()
             if len(overlap) > 0:
                 raise DuplicateSymbolError(overlap)
-
-        self.missing_mode = missing_mode
-        if weak_mode is not None:
-            self.weak_mode = weak_mode
-        else:
-            self.weak_mode = self.missing_mode
 
 
 def map_elf_symbols(symbols: list[Symbol], *, block_duplicates: bool = False) -> dict[str, Symbol]:
@@ -238,7 +227,7 @@ def map_rel_symbols(
     return ret
 
 
-def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
+def find_symbol(ctx: Context, sym_id: int, missing_symbols: set[str], missing_weak_symbols: set[str]) -> RelSymbol:
     """Finds a symbol by id"""
 
     # Get symbol
@@ -254,17 +243,11 @@ def find_symbol(ctx: Context, sym_id: int) -> RelSymbol:
     if sym.name in ctx.lst_symbols:
         return ctx.lst_symbols[sym.name]
 
-    # Undefined weak symbol
+    # Undefined symbol
     if sym.st_bind == ENUM_ST_INFO_BIND["STB_WEAK"]:
-        mode = ctx.weak_mode
+        missing_weak_symbols.add(sym.name)
     else:
-        mode = ctx.missing_mode
-
-    if mode == MissingSymbolMode.ERROR:
-        raise MissingSymbolError(sym.name)
-
-    if mode == MissingSymbolMode.WARN:
-        print(f"Warning: treating missing weak symbol {sym.name} as null")  # noqa: T201
+        missing_symbols.add(sym.name)
 
     return RelSymbol(0, 0, 0, sym.name)
 
@@ -317,7 +300,7 @@ class BinarySection:
     static_relocs: list[RelReloc]
 
 
-def parse_section(ctx: Context, sec_id: int, missing_symbols: set[str]) -> BinarySection:
+def parse_section(ctx: Context, sec_id: int, missing_symbols: set[str], missing_weak_symbols: set[str]) -> BinarySection:
     """Extract the contents and relocations for a section"""
 
     # Get section
@@ -349,11 +332,7 @@ def parse_section(ctx: Context, sec_id: int, missing_symbols: set[str]) -> Binar
             continue
 
         offs = reloc.r_offset
-        try:
-            target = find_symbol(ctx, reloc.r_info_sym)
-        except MissingSymbolError as e:
-            missing_symbols.add(e.symbol)
-            continue
+        target = find_symbol(ctx, reloc.r_info_sym, missing_symbols, missing_weak_symbols)
         target_offset = target.offset + reloc.r_addend
 
         # Check when to apply
@@ -628,6 +607,8 @@ def elf_to_rel(
     # Setup default parameters
     if ignore_sections is None:
         ignore_sections = []
+    if missing_weak is None:
+        missing_weak = missing_mode
 
     # Build context
     ctx = Context(
@@ -637,25 +618,54 @@ def elf_to_rel(
         version=version,
         behaviour=behaviour,
         block_duplicates=block_duplicates,
-        missing_mode=missing_mode,
-        weak_mode=missing_weak,
     )
 
     # Give space for header
     file_pos = RelHeader.binary_size(version)
     section_info_offset = file_pos
 
-    # Parse sections
+    # Setup symbol error tracking
     missing_symbols: set[str] = set()
+    missing_weak_symbols: set[str] = set()
+
+    # Gather export info
+    if "_prolog" in ctx.symbol_map:
+        prolog = ctx.symbol_map["_prolog"]
+    else:
+        missing_symbols.add("_prolog")
+    if "_epilog" in ctx.symbol_map:
+        epilog = ctx.symbol_map["_epilog"]
+    else:
+        missing_symbols.add("_epilog")
+    if "_unresolved" in ctx.symbol_map:
+        unresolved = ctx.symbol_map["_unresolved"]
+    else:
+        missing_symbols.add("_unresolved")
+
+    # Parse sections
     all_sections = [
-        parse_section(ctx, sec_id, missing_symbols)
+        parse_section(ctx, sec_id, missing_symbols, missing_weak_symbols)
         if should_include_section(ctx, sec_id, ignore_sections)
         else None
         for sec_id in range(ctx.plf.num_sections())
     ]
-    if len(missing_symbols) > 0:
-        raise MissingSymbolsError(missing_symbols)
     sections = [sec for sec in all_sections if sec is not None]
+
+    # Handle missing symbol errors
+    error_missing = set()
+    warn_missing = set()
+    if missing_weak == MissingSymbolMode.ERROR:
+        error_missing.update(missing_weak_symbols)
+    elif missing_weak == MissingSymbolMode.WARN:
+        warn_missing.update(missing_weak_symbols)
+    if missing_mode == MissingSymbolMode.ERROR:
+        error_missing.update(missing_symbols)
+    elif missing_mode == MissingSymbolMode.WARN:
+        warn_missing.update(missing_symbols)
+    for sym in warn_missing:
+        print(f"Warning: treating missing symbol {sym} as null")  # noqa: T201
+    if len(error_missing) > 0:
+        raise MissingSymbolsError(error_missing)
 
     # Give space for section info
     section_info_size = RelSectionInfo.binary_size(len(all_sections))
@@ -685,14 +695,6 @@ def elf_to_rel(
 
     # Build reloc contents
     file_pos, relocation_info = build_relocations(ctx, file_pos, module_relocs)
-
-    # Gather export info
-    try:
-        prolog = ctx.symbol_map["_prolog"]
-        epilog = ctx.symbol_map["_epilog"]
-        unresolved = ctx.symbol_map["_unresolved"]
-    except KeyError as e:
-        raise MissingSymbolError(e.args[0]) from e
 
     # Build header
     header = RelHeader(

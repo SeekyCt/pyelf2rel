@@ -60,7 +60,7 @@ class MissingSymbolsError(Exception):
     symbols: set[str]
 
     def __init__(self, symbols: set[str]):
-        super().__init__(f"Missing {len(symbols)} symbols: {', '.join(sorted(symbols))}")
+        super().__init__(f"Missing {len(symbols)} required symbol(s): {', '.join(sorted(symbols))}")
 
 
 class UnsupportedRelocationError(Exception):
