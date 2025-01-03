@@ -47,16 +47,6 @@ class LSTCommaError(LSTFormatError):
         super().__init__("Expected 1 or 3 commas before colon", line_num)
 
 
-class MissingSymbolError(Exception):
-    """A required symbol was not defined"""
-
-    symbol: str
-
-    def __init__(self, symbol: str):
-        super().__init__(f"Missing symbol {symbol}")
-        self.symbol = symbol
-
-
 class MissingSymbolsError(Exception):
     """A required symbol was not defined"""
 

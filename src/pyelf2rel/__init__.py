@@ -2,7 +2,6 @@ from pyelf2rel.elf2rel import ElfToRelBehaviour, MissingSymbolMode, elf_to_rel
 from pyelf2rel.error import (
     DuplicateSymbolError,
     LSTFormatError,
-    MissingSymbolError,
     MissingSymbolsError,
     UnsupportedRelocationError,
 )
@@ -15,7 +14,6 @@ __all__ = [
     "elf_to_rel",
     "DuplicateSymbolError",
     "LSTFormatError",
-    "MissingSymbolError",
     "MissingSymbolsError",
     "UnsupportedRelocationError",
     "load_lst",
