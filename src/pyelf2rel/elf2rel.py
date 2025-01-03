@@ -16,6 +16,7 @@ from pyelf2rel.error import (
     DuplicateSymbolError,
     MissingSymbolsError,
     UnsupportedRelocationError,
+    UnsupportedSectionError,
 )
 from pyelf2rel.lst import load_lst
 from pyelf2rel.rel import RelHeader, RelImp, RelReloc, RelSectionInfo, RelSymbol, RelType
@@ -238,6 +239,10 @@ def find_symbol(
     # Find symbol location
     sec = sym.st_shndx
     if sec != SHN_INDICES.SHN_UNDEF:
+        # Absolute symbol
+        if sec == SHN_INDICES.SHN_ABS:
+            return RelSymbol(0, 0, sym.st_value, sym.name)
+
         # Symbol in this rel
         return RelSymbol(ctx.module_id, sec, sym.st_value, sym.name)
 
@@ -338,6 +343,9 @@ def parse_section(
         offs = reloc.r_offset
         target = find_symbol(ctx, reloc.r_info_sym, missing_symbols, missing_weak_symbols)
         target_offset = target.offset + reloc.r_addend
+
+        if target.section_id >= SHN_INDICES.SHN_LORESERVE:
+            raise UnsupportedSectionError(target.section_id)
 
         # Check when to apply
         skip_runtime = False

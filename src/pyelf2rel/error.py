@@ -61,3 +61,10 @@ class UnsupportedRelocationError(Exception):
 
     def __init__(self, reloc_type: str):
         super().__init__(f"Unsupported relocation type {reloc_type}")
+
+
+class UnsupportedSectionError(Exception):
+    """An unsupported section was relocated against"""
+
+    def __init__(self, section_id: int):
+        super().__init__(f"Unsupported section id {section_id} relocated against")
