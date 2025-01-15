@@ -644,18 +644,33 @@ def elf_to_rel(
     missing_weak_symbols: set[str] = set()
 
     # Gather export info
+
     if "_prolog" in ctx.symbol_map:
         prolog = ctx.symbol_map["_prolog"]
+        prolog_sec = prolog.st_shndx
+        prolog_addr = prolog.st_value
     else:
         missing_symbols.add("_prolog")
+        prolog_sec = 0
+        prolog_addr = 0
+
     if "_epilog" in ctx.symbol_map:
         epilog = ctx.symbol_map["_epilog"]
+        epilog_sec = epilog.st_shndx
+        epilog_addr = epilog.st_value
     else:
         missing_symbols.add("_epilog")
+        epilog_sec = 0
+        epilog_addr = 0
+
     if "_unresolved" in ctx.symbol_map:
         unresolved = ctx.symbol_map["_unresolved"]
+        unresolved_addr = unresolved.st_value
+        unresolved_sec = unresolved.st_shndx
     else:
         missing_symbols.add("_unresolved")
+        unresolved_addr = 0
+        unresolved_sec = 0
 
     # Parse sections
     all_sections = [
@@ -725,13 +740,13 @@ def elf_to_rel(
         relocation_info.reloc_offset,
         relocation_info.imp_offset,
         relocation_info.imp_size,
-        prolog.st_shndx,
-        epilog.st_shndx,
-        unresolved.st_shndx,
+        prolog_sec,
+        epilog_sec,
+        unresolved_sec,
         0,
-        prolog.st_value,
-        epilog.st_value,
-        unresolved.st_value,
+        prolog_addr,
+        epilog_addr,
+        unresolved_addr,
         align,
         bss_align,
         relocation_info.fix_size,
