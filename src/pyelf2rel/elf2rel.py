@@ -230,7 +230,7 @@ def map_rel_symbols(
 
 def find_symbol(
     ctx: Context, sym_id: int, missing_symbols: set[str], missing_weak_symbols: set[str]
-) -> RelSymbol:
+) -> Optional[RelSymbol]:
     """Finds a symbol by id"""
 
     # Get symbol
@@ -256,7 +256,7 @@ def find_symbol(
     else:
         missing_symbols.add(sym.name)
 
-    return RelSymbol(0, 0, 0, sym.name)
+    return None
 
 
 def should_include_section(ctx: Context, sec_id: int, ignore_sections: list[str]) -> bool:
@@ -342,6 +342,9 @@ def parse_section(
 
         offs = reloc.r_offset
         target = find_symbol(ctx, reloc.r_info_sym, missing_symbols, missing_weak_symbols)
+        if target is None:
+            # Leave relocations to missing symbols as 0
+            continue
         target_offset = target.offset + reloc.r_addend
 
         if target.section_id >= SHN_INDICES.SHN_LORESERVE:
