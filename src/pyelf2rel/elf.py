@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property
 from struct import unpack
-from typing import TYPE_CHECKING, BinaryIO
+from typing import TYPE_CHECKING, BinaryIO, cast
 
 if TYPE_CHECKING:
     from elftools.elf.elffile import ELFFile
@@ -34,7 +34,8 @@ class Symbol:
 def read_symbols(f: BinaryIO, plf: ELFFile) -> list[Symbol]:
     """Loads symbols from the symtab section of an ELF file"""
 
-    symtab: SymbolTableSection = plf.get_section_by_name(".symtab")
+    symtab = plf.get_section_by_name(".symtab")
+    symtab = cast("SymbolTableSection", symtab)
     ret = []
     for i in range(symtab.num_symbols()):
         f.seek(symtab["sh_offset"] + (i * symtab["sh_entsize"]))

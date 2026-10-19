@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from sys import argv
-from typing import TYPE_CHECKING, Callable, Optional, TextIO, TypedDict
+from typing import TYPE_CHECKING, Callable, TextIO, TypedDict, cast
 
 from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
@@ -187,8 +187,8 @@ class Context:
 def map_elf_symbols(symbols: list[Symbol], *, block_duplicates: bool = False) -> dict[str, Symbol]:
     """Creates a dict of global symbols by name"""
 
-    ret = {}
-    duplicates = set()
+    ret: dict[str, Symbol] = {}
+    duplicates: set[str] = set()
     for sym in symbols:
         # Check symbol is global
         if (
@@ -213,8 +213,8 @@ def map_rel_symbols(
 ) -> dict[str, RelSymbol]:
     """Creates a dict of symbols by name"""
 
-    ret = {}
-    duplicates = set()
+    ret: dict[str, RelSymbol] = {}
+    duplicates: set[str] = set()
     for sym in symbols:
         # Save duplicates to report later
         if sym.name in ret:
@@ -230,7 +230,7 @@ def map_rel_symbols(
 
 def find_symbol(
     ctx: Context, sym_id: int, missing_symbols: set[str], missing_weak_symbols: set[str]
-) -> Optional[RelSymbol]:
+) -> RelSymbol | None:
     """Finds a symbol by id"""
 
     # Get symbol
@@ -298,7 +298,7 @@ class BinarySection:
     header: Section
 
     # Binary contents of the section (unlinked)
-    contents: bytes
+    contents: bytes | bytearray
 
     # Relocations to be applied at runtime to the section
     runtime_relocs: list[RelReloc]
@@ -320,16 +320,18 @@ def parse_section(
         return BinarySection(sec_id, sec, b"", [], [])
 
     # Get relocations
-    rela: RelocationSection = ctx.plf.get_section_by_name(".rela" + sec.name)
+    rela: Section | None = ctx.plf.get_section_by_name(".rela" + sec.name)
 
     # Return unchanged data if not relocated
     if rela is None:
         return BinarySection(sec_id, sec, sec.data(), [], [])
 
+    rela = cast("RelocationSection", rela)
+
     # Init return data
     dat = bytearray(sec.data())
-    runtime_relocs = []
-    static_relocs = []
+    runtime_relocs: list[RelReloc] = []
+    static_relocs: list[RelReloc] = []
 
     # Build relocation lists
     for reloc in read_relocs(ctx.file, rela):
@@ -385,15 +387,15 @@ def build_section_contents(
 
     # Concatenate section contents, respecting alignment
     dat = bytearray()
-    offsets = {}  # positions in file
-    internal_offsets = {}  # positions in dat
+    offsets: dict[int, int] = {}  # positions in file
+    internal_offsets: dict[int, int] = {}  # positions in dat
     align = 0
     bss_align = 0
     for section in sections:
         # Force minimum alignment of 2 to avoid offset containing exec flag
         sec_align = max(section.header["sh_addralign"], 2)
 
-        contents = None
+        contents: bytes | bytearray | None = None
         if section.header["sh_type"] == "SHT_NOBITS":
             if section in baked_bss:
                 align = max(align, sec_align)
@@ -456,7 +458,7 @@ def build_section_info(sections: list[BinarySection | None], offsets: dict[int, 
         if sec is not None:
             offset = offsets.get(sec.sec_id, 0)
             length = sec.header["sh_size"]
-            executable = sec.header["sh_flags"] & SH_FLAGS.SHF_EXECINSTR
+            executable = sec.header["sh_flags"] & SH_FLAGS.SHF_EXECINSTR != 0
         else:
             offset = 0
             length = 0
@@ -476,7 +478,7 @@ def make_section_relocations(section: BinarySection) -> dict[int, bytes]:
     modules = {r.target_module for r in section.runtime_relocs}
 
     # Split relocs by module
-    ret = {}
+    ret: dict[int, bytes] = {}
     for module in modules:
         # Get relevant relocs and sort them by offset
         filtered_relocs = sorted(
@@ -494,8 +496,8 @@ def group_module_relocations(section_relocs: list[dict[int, bytes]]) -> dict[int
     # Group across sections
     ret: dict[int, bytearray] = defaultdict(bytearray)
     for section in section_relocs:
-        for module, relocs in section.items():
-            ret[module].extend(relocs)
+        for module, module_relocs in section.items():
+            ret[module].extend(module_relocs)
 
     # Add terminators
     for relocs in ret.values():
@@ -549,7 +551,7 @@ def build_relocations(
     module_key: Callable[[int], int] | None
     if ctx.behaviour["relocation_order"] == RelocationModuleOrder.MODERN_FORK:
 
-        def modern_fork_module_key(module):
+        def modern_fork_module_key(module: int):
             if module in (0, ctx.module_id):
                 return base + module
             else:
@@ -561,7 +563,7 @@ def build_relocations(
         and ctx.version >= RelHeader.FIX_SIZE_MIN_VER
     ):
 
-        def fix_size_module_key(module):
+        def fix_size_module_key(module: int):
             # Put self second last
             if module == ctx.module_id:
                 return base + 1
@@ -615,7 +617,7 @@ def elf_to_rel(
     ignore_sections: list[str] | None = None,
     block_duplicates: bool = False,
     missing_mode: MissingSymbolMode = MissingSymbolMode.ERROR,
-    missing_weak: Optional[MissingSymbolMode] = None,
+    missing_weak: MissingSymbolMode | None = None,
 ) -> bytes:
     """Converts a partially linked elf file into a rel file"""
 
@@ -682,8 +684,8 @@ def elf_to_rel(
     sections = [sec for sec in all_sections if sec is not None]
 
     # Handle missing symbol errors
-    error_missing = set()
-    warn_missing = set()
+    error_missing: set[str] = set()
+    warn_missing: set[str] = set()
     if missing_weak == MissingSymbolMode.ERROR:
         error_missing.update(missing_weak_symbols)
     elif missing_weak == MissingSymbolMode.WARN:
@@ -762,7 +764,7 @@ def elf_to_rel(
     return bytes(dat)
 
 
-def main(argv: list[str], *, ttyd_tools=False):
+def main(argv: list[str], *, ttyd_tools: bool = False):
     parser = ArgumentParser(description="Converts an ELF file to a REL file")
 
     input_file_help = "Input ELF path"
