@@ -27,6 +27,7 @@ def load_elf(module_id: RelModuleId, file: BinaryIO) -> str:
     symbols = read_symbols(file, plf)
 
     rel_symbols = [
+        # TODO: mapping support for --strip-empty-sections
         RelSymbol(module_id, RelSectionId(sym.st_shndx), sym.st_value, sym.name)
         for sym in symbols
         if (

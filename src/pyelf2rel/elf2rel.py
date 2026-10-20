@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from argparse import ArgumentParser
 from collections import defaultdict
 from dataclasses import dataclass
@@ -32,7 +33,7 @@ from pyelf2rel.rel import (
 from pyelf2rel.util import align_to, align_to_ttyd_tools
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from typing import BinaryIO
 
     from elftools.elf.relocation import RelocationSection
@@ -163,6 +164,9 @@ class Context:
     # Toggles for matching legacy behaviour
     behaviour: BehaviourDef
 
+    # Mapping of ELF section ids to REL section ids
+    sec_id_map: dict[int, RelSectionId]
+
     def __init__(
         self,
         module_id: RelModuleId,
@@ -254,7 +258,7 @@ def find_symbol(
             return RelSymbol(RelModuleId(0), RelSectionId(0), sym.st_value, sym.name)
 
         # Symbol in this rel
-        return RelSymbol(ctx.module_id, RelSectionId(sec), sym.st_value, sym.name)
+        return RelSymbol(ctx.module_id, ctx.sec_id_map[sec], sym.st_value, sym.name)
 
     # Symbol in dol or other rel
     if sym.name in ctx.lst_symbols:
@@ -460,7 +464,7 @@ def build_section_contents(
     return file_pos, bytes(dat), offsets, align, bss_align
 
 
-def build_section_info(sections: list[BinarySection | None], offsets: dict[int, int]) -> bytes:
+def build_section_info(sections: Sequence[BinarySection | None], offsets: dict[int, int]) -> bytes:
     """Builds the linked section info table"""
 
     dat = bytearray()
@@ -479,7 +483,7 @@ def build_section_info(sections: list[BinarySection | None], offsets: dict[int, 
     return bytes(dat)
 
 
-def make_section_relocations(section: BinarySection) -> dict[RelModuleId, bytes]:
+def make_section_relocations(ctx: Context, section: BinarySection) -> dict[RelModuleId, bytes]:
     """Creates the binary data for a section's relocations
 
     Returns a map from module id to the data targetting that module"""
@@ -495,7 +499,7 @@ def make_section_relocations(section: BinarySection) -> dict[RelModuleId, bytes]
             [r for r in section.runtime_relocs if r.target_module == module], key=lambda r: r.offset
         )
 
-        ret[module] = RelReloc.encode_section(RelSectionId(section.sec_id), filtered_relocs)
+        ret[module] = RelReloc.encode_section(ctx.sec_id_map[section.sec_id], filtered_relocs)
 
     return ret
 
@@ -619,6 +623,32 @@ def build_relocations(
     return file_pos, RelocationInfo(reloc_offset, imp_offset, imp_size, fix_size, dat)
 
 
+def pick_sec_ids(ctx: Context, ignore_sections: list[str]) -> list[int]:
+    referenced: set[int] = set()
+    for sec in ctx.plf.iter_sections("SHT_RELA"):
+        sec = cast("RelocationSection", sec)
+        for reloc in read_relocs(ctx.file, sec):
+            try:
+                t = RelType(reloc.r_info_type)
+            except ValueError as e:
+                raise UnsupportedRelocationError(str(reloc.r_info_type)) from e
+            if t == RelType.NONE:
+                continue
+
+            sym = ctx.symbols[reloc.r_info_sym]
+            referenced.add(sym.st_shndx)
+
+    return [
+        sec_id
+        for sec_id in range(ctx.plf.num_sections())
+        if (
+            should_include_section(ctx, sec_id, ignore_sections)
+            or sec_id == 0
+            or sec_id in referenced
+        )
+    ]
+
+
 def elf_to_rel(
     module_id: int,
     elf_file: BinaryIO,
@@ -630,6 +660,8 @@ def elf_to_rel(
     block_duplicates: bool = False,
     missing_mode: MissingSymbolMode = MissingSymbolMode.ERROR,
     missing_weak: MissingSymbolMode | None = None,
+    strip_empty_sections: bool = False,
+    section_map_path: str | None = None,
 ) -> bytes:
     """Converts a partially linked elf file into a rel file"""
 
@@ -686,6 +718,27 @@ def elf_to_rel(
         unresolved_addr = 0
         unresolved_sec = 0
 
+    if strip_empty_sections:
+        included_sec_ids = pick_sec_ids(ctx, ignore_sections)
+    else:
+        included_sec_ids = list(range(ctx.plf.num_sections()))
+
+    ctx.sec_id_map = {sec_id: RelSectionId(i) for i, sec_id in enumerate(included_sec_ids)}
+    if section_map_path is not None:
+        with open(section_map_path, "w") as f:
+            json.dump(
+                [
+                    {
+                        "name": ctx.plf.get_section(id_elf).name,
+                        "from": id_elf,
+                        "to": id_rel,
+                    }
+                    for id_elf, id_rel in ctx.sec_id_map.items()
+                ],
+                f,
+                indent=4,
+            )
+
     # Parse sections
     all_sections = [
         parse_section(ctx, sec_id, missing_symbols, missing_weak_symbols)
@@ -694,6 +747,7 @@ def elf_to_rel(
         for sec_id in range(ctx.plf.num_sections())
     ]
     sections = [sec for sec in all_sections if sec is not None]
+    all_sections = [all_sections[sec_id] for sec_id in included_sec_ids]
 
     # Handle missing symbol errors
     error_missing: set[str] = set()
@@ -734,7 +788,7 @@ def elf_to_rel(
     section_info = build_section_info(all_sections, section_offsets)
 
     # Build relocs
-    section_relocs = [make_section_relocations(sec) for sec in sections]
+    section_relocs = [make_section_relocations(ctx, sec) for sec in sections]
     module_relocs = group_module_relocations(section_relocs)
 
     # Build reloc contents
@@ -819,6 +873,17 @@ def main(argv: list[str], *, ttyd_tools: bool = False):
             help="Extra sections to strip from the output rel",
         )
         parser.add_argument(
+            "--strip-empty-sections",
+            default=False,
+            const=True,
+            nargs="?",
+            help=(
+                "Remove empty sections from the header, optionally emitting a json of the "
+                "section id mapping between the ELF and REL (WARNING: this will complicate "
+                "linking between multiple custom rels)"
+            ),
+        )
+        parser.add_argument(
             "--block-duplicates",
             action="store_true",
             help="Throw an error when finding duplicated symbols",
@@ -864,6 +929,8 @@ def main(argv: list[str], *, ttyd_tools: bool = False):
         behaviour = ElfToRelBehaviour.OLD_FORK if args.old_fork else ElfToRelBehaviour.MODERN_FORK
         missing_mode = MissingSymbolMode.WARN
         missing_weak = None
+        strip_empty_sections = False
+        section_map_path = None
     else:
         behaviour = ElfToRelBehaviour.PYELF2REL
         missing_mode = MissingSymbolMode(args.missing_mode)
@@ -871,6 +938,14 @@ def main(argv: list[str], *, ttyd_tools: bool = False):
             missing_weak = MissingSymbolMode(args.missing_weak)
         else:
             missing_weak = None
+
+        match cast("bool | str", args.strip_empty_sections):
+            case bool(x):
+                strip_empty_sections = x
+                section_map_path = None
+            case str(x):
+                strip_empty_sections = True
+                section_map_path = x
 
     with open(input_file, "rb") as f, open(symbol_file) as sym:
         dat = elf_to_rel(
@@ -883,6 +958,8 @@ def main(argv: list[str], *, ttyd_tools: bool = False):
             block_duplicates=False if ttyd_tools else args.block_duplicates,
             missing_mode=missing_mode,
             missing_weak=missing_weak,
+            strip_empty_sections=strip_empty_sections,
+            section_map_path=section_map_path,
         )
 
     with open(output_file, "wb") as f:
