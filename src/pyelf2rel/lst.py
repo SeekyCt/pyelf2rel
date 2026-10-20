@@ -5,7 +5,7 @@ LST symbol map loading and encoding
 from __future__ import annotations
 
 from pyelf2rel.error import LSTColonError, LSTCommaError, LSTFormatError, LSTQMarkError
-from pyelf2rel.rel import RelSymbol
+from pyelf2rel.rel import RelModuleId, RelSectionId, RelSymbol
 
 
 def dump_lst_symbol(sym: RelSymbol) -> str:
@@ -60,7 +60,7 @@ def load_lst_symbol(
         # Dol
         addr = comma_parts[0]
         try:
-            return RelSymbol(0, 0, int(addr, 16), name)
+            return RelSymbol(RelModuleId(0), RelSectionId(0), int(addr, 16), name)
         except ValueError as e:
             raise LSTFormatError(str(e), line_num) from e
     else:
@@ -71,7 +71,12 @@ def load_lst_symbol(
             raise LSTCommaError(line_num) from e
 
         try:
-            return RelSymbol(int(module_id, 0), int(section_id, 0), int(offset, 16), name)
+            return RelSymbol(
+                RelModuleId(int(module_id, 0)),
+                RelSectionId(int(section_id, 0)),
+                int(offset, 16),
+                name,
+            )
         except ValueError as e:
             raise LSTFormatError(str(e), line_num) from e
 
@@ -79,7 +84,7 @@ def load_lst_symbol(
 def load_lst(txt: str, *, support_old_fork: bool = False) -> list[RelSymbol]:
     """Parses an LST symbol map"""
 
-    ret = []
+    ret: list[RelSymbol] = []
     for i, line in enumerate(txt.splitlines()):
         # Ignore comments and whitespace
         strip = line.strip()

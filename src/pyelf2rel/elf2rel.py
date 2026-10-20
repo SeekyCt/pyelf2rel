@@ -19,7 +19,16 @@ from pyelf2rel.error import (
     UnsupportedSectionError,
 )
 from pyelf2rel.lst import load_lst
-from pyelf2rel.rel import RelHeader, RelImp, RelReloc, RelSectionInfo, RelSymbol, RelType
+from pyelf2rel.rel import (
+    RelHeader,
+    RelImp,
+    RelModuleId,
+    RelReloc,
+    RelSectionId,
+    RelSectionInfo,
+    RelSymbol,
+    RelType,
+)
 from pyelf2rel.util import align_to, align_to_ttyd_tools
 
 if TYPE_CHECKING:
@@ -133,7 +142,7 @@ class Context:
     """Utility struct for passing common data between the conversion functions"""
 
     # Module id of the rel to create
-    module_id: int
+    module_id: RelModuleId
 
     # Version of the rel to create
     version: int
@@ -156,7 +165,7 @@ class Context:
 
     def __init__(
         self,
-        module_id: int,
+        module_id: RelModuleId,
         elf_file: BinaryIO,
         lst_file: TextIO,
         *,
@@ -242,10 +251,10 @@ def find_symbol(
     if sec != SHN_INDICES.SHN_UNDEF:
         # Absolute symbol
         if sec == SHN_INDICES.SHN_ABS:
-            return RelSymbol(0, 0, sym.st_value, sym.name)
+            return RelSymbol(RelModuleId(0), RelSectionId(0), sym.st_value, sym.name)
 
         # Symbol in this rel
-        return RelSymbol(ctx.module_id, sec, sym.st_value, sym.name)
+        return RelSymbol(ctx.module_id, RelSectionId(sec), sym.st_value, sym.name)
 
     # Symbol in dol or other rel
     if sym.name in ctx.lst_symbols:
@@ -470,7 +479,7 @@ def build_section_info(sections: list[BinarySection | None], offsets: dict[int, 
     return bytes(dat)
 
 
-def make_section_relocations(section: BinarySection) -> dict[int, bytes]:
+def make_section_relocations(section: BinarySection) -> dict[RelModuleId, bytes]:
     """Creates the binary data for a section's relocations
 
     Returns a map from module id to the data targetting that module"""
@@ -479,30 +488,32 @@ def make_section_relocations(section: BinarySection) -> dict[int, bytes]:
     modules = {r.target_module for r in section.runtime_relocs}
 
     # Split relocs by module
-    ret: dict[int, bytes] = {}
+    ret: dict[RelModuleId, bytes] = {}
     for module in modules:
         # Get relevant relocs and sort them by offset
         filtered_relocs = sorted(
             [r for r in section.runtime_relocs if r.target_module == module], key=lambda r: r.offset
         )
 
-        ret[module] = RelReloc.encode_section(section.sec_id, filtered_relocs)
+        ret[module] = RelReloc.encode_section(RelSectionId(section.sec_id), filtered_relocs)
 
     return ret
 
 
-def group_module_relocations(section_relocs: list[dict[int, bytes]]) -> dict[int, bytes]:
+def group_module_relocations(
+    section_relocs: list[dict[RelModuleId, bytes]],
+) -> dict[RelModuleId, bytes]:
     """Gathers the relocations against each module from each section"""
 
     # Group across sections
-    ret: dict[int, bytearray] = defaultdict(bytearray)
+    ret: dict[RelModuleId, bytearray] = defaultdict(bytearray)
     for section in section_relocs:
         for module, module_relocs in section.items():
             ret[module].extend(module_relocs)
 
     # Add terminators
     for relocs in ret.values():
-        relocs.extend(RelReloc.encode_reloc(0, RelType.RVL_STOP, 0, 0))
+        relocs.extend(RelReloc.encode_reloc(0, RelType.RVL_STOP, RelSectionId(0), 0))
 
     return {module: bytes(dat) for module, dat in ret.items()}
 
@@ -526,7 +537,7 @@ class RelocationInfo:
 
 
 def build_relocations(
-    ctx: Context, file_pos: int, module_relocs: dict[int, bytes]
+    ctx: Context, file_pos: int, module_relocs: dict[RelModuleId, bytes]
 ) -> tuple[int, RelocationInfo]:
     """Builds the linked relocation and imp tables
 
@@ -630,7 +641,7 @@ def elf_to_rel(
 
     # Build context
     ctx = Context(
-        module_id,
+        RelModuleId(module_id),
         elf_file,
         lst_file,
         version=version,

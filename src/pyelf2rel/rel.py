@@ -7,14 +7,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import IntEnum, unique
 from struct import pack
+from typing import NewType
+
+RelModuleId = NewType("RelModuleId", int)
+RelSectionId = NewType("RelSectionId", int)
 
 
 @dataclass(frozen=True)
 class RelSymbol:
     """Container for a symbol in a rel file"""
 
-    module_id: int
-    section_id: int
+    module_id: RelModuleId
+    section_id: RelSectionId
     offset: int
     name: str
 
@@ -137,10 +141,10 @@ class RelType(IntEnum):
 class RelReloc:
     """Container for one relocation"""
 
-    target_module: int
+    target_module: RelModuleId
     offset: int
     t: RelType
-    section: int
+    section: RelSectionId
     addend: int
 
     MAX_DELTA = 0xFFFF
@@ -151,13 +155,13 @@ class RelReloc:
         return RelReloc.encode_reloc(relative_offset, self.t, self.section, self.addend)
 
     @staticmethod
-    def encode_reloc(relative_offset: int, t: RelType, section: int, addend: int):
+    def encode_reloc(relative_offset: int, t: RelType, section: RelSectionId, addend: int):
         """Gets the binary representation of a relocation"""
 
         return pack(">HBBI", relative_offset, t, section, addend)
 
     @staticmethod
-    def encode_section(section_id: int, relocs: list[RelReloc]) -> bytes:
+    def encode_section(section_id: RelSectionId, relocs: list[RelReloc]) -> bytes:
         """Converts a list of relocations in a section to binary"""
 
         dat = bytearray()
@@ -168,7 +172,9 @@ class RelReloc:
 
             # Use nops to get delta in range
             while delta > RelReloc.MAX_DELTA:
-                dat.extend(RelReloc.encode_reloc(RelReloc.MAX_DELTA, RelType.RVL_NONE, 0, 0))
+                dat.extend(
+                    RelReloc.encode_reloc(RelReloc.MAX_DELTA, RelType.RVL_NONE, RelSectionId(0), 0)
+                )
                 delta -= RelReloc.MAX_DELTA
 
             dat.extend(rel.to_binary(delta))
@@ -183,7 +189,7 @@ class RelReloc:
 class RelImp:
     """Container for an imp table entry"""
 
-    module_id: int
+    module_id: RelModuleId
     offset: int
 
     def to_binary(self) -> bytes:
@@ -198,7 +204,7 @@ class RelImp:
 class RelHeader:
     """Container for the rel header struct"""
 
-    module_id: int  # u32
+    module_id: RelModuleId  # u32
     next_rel: int  # u32
     prev_rel: int  # u32
     num_sections: int  # u32

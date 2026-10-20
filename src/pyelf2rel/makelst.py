@@ -10,7 +10,7 @@ from elftools.elf.enums import ENUM_ST_INFO_BIND
 
 from pyelf2rel.elf import read_symbols
 from pyelf2rel.lst import dump_lst
-from pyelf2rel.rel import RelSymbol
+from pyelf2rel.rel import RelModuleId, RelSectionId, RelSymbol
 from pyelf2rel.util import pairwise
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from typing import BinaryIO
 
 
-def load_elf(module_id: int, file: BinaryIO) -> str:
+def load_elf(module_id: RelModuleId, file: BinaryIO) -> str:
     """Creates an LST map of the symbols in an ELF file
 
     Returns the LST text and the list of symbols defined"""
@@ -27,7 +27,7 @@ def load_elf(module_id: int, file: BinaryIO) -> str:
     symbols = read_symbols(file, plf)
 
     rel_symbols = [
-        RelSymbol(module_id, sym.st_shndx, sym.st_value, sym.name)
+        RelSymbol(module_id, RelSectionId(sym.st_shndx), sym.st_value, sym.name)
         for sym in symbols
         if (
             sym.name != ""
@@ -40,11 +40,11 @@ def load_elf(module_id: int, file: BinaryIO) -> str:
 
 
 def make_lst(
-    *, elfs: Iterable[tuple[int, str]] | None = None, lsts: Iterable[str] | None = None
+    *, elfs: Iterable[tuple[RelModuleId, str]] | None = None, lsts: Iterable[str] | None = None
 ) -> str:
     """Makes an LST by combining symbols from ELFs and LSTs"""
 
-    txts = []
+    txts: list[tuple[str, str]] = []
 
     for module_id, elf_path in elfs or []:
         with open(elf_path, "rb") as f:
@@ -73,7 +73,7 @@ def main(argv: list[str], out: TextIO = stdout):
 
     if len(args.elf or []) % 2 != 0:
         raise ArgumentError(arg_elf, "Inputs require a module id and path for each entry")
-    elfs = [(int(module_id), path) for module_id, path in pairwise(args.elf)]
+    elfs = [(RelModuleId(int(module_id)), path) for module_id, path in pairwise(args.elf)]
 
     out.write(make_lst(elfs=elfs, lsts=args.lst))
 
