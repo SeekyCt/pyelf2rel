@@ -15,7 +15,7 @@ T = TypeVar("T")
 def pairwise(seq: list[T]) -> Iterable[tuple[T, T]]:
     """Iterates a sequence two values at a time"""
 
-    return zip(*[iter(seq)] * 2)
+    return zip(*[iter(seq)] * 2, strict=False)
 
 
 def align_to(offs: int, align: int) -> tuple[int, int]:

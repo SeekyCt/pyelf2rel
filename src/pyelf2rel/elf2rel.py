@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from sys import argv
-from typing import TYPE_CHECKING, Callable, TextIO, TypedDict, cast
+from typing import TYPE_CHECKING, TextIO, TypedDict, cast
 
 from elftools.elf.constants import SH_FLAGS, SHN_INDICES
 from elftools.elf.elffile import ELFFile
@@ -23,6 +23,7 @@ from pyelf2rel.rel import RelHeader, RelImp, RelReloc, RelSectionInfo, RelSymbol
 from pyelf2rel.util import align_to, align_to_ttyd_tools
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import BinaryIO
 
     from elftools.elf.relocation import RelocationSection
