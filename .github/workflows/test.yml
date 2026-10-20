@@ -31,13 +31,16 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install Hatch
-      run: pip install hatch==1.18.1
+      uses: pypa/hatch@install
+
+    - name: Run format check
+      run: hatch check fmt
 
     - name: Run static analysis
-      run: hatch fmt --check
+      run: hatch check code
 
     - name: Run tests
-      run: hatch run cov
+      run: hatch test --cover
 
     - name: Run mypy
       run: hatch run types:check
