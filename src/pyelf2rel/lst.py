@@ -11,7 +11,7 @@ from pyelf2rel.rel import RelModuleId, RelSectionId, RelSymbol
 def dump_lst_symbol(sym: RelSymbol) -> str:
     """Converts a symbol to a line of LST"""
 
-    if sym.module_id == 0:
+    if sym.module_id == RelModuleId(0):
         return f"{sym.offset:08x}:{sym.name}"
     else:
         return f"{sym.module_id},{sym.section_id},{sym.offset:08x}:{sym.name}"

@@ -306,7 +306,7 @@ class BinarySection:
     """Container for a processed section"""
 
     # Index of the section in the ELF
-    sec_id: int
+    sec_id: RelSectionId
 
     # ELF header for the section
     header: Section
@@ -331,14 +331,14 @@ def parse_section(
 
     # Check for BSS
     if sec["sh_type"] != "SHT_PROGBITS":
-        return BinarySection(sec_id, sec, b"", [], [])
+        return BinarySection(ctx.sec_id_map[sec_id], sec, b"", [], [])
 
     # Get relocations
     rela: Section | None = ctx.plf.get_section_by_name(".rela" + sec.name)
 
     # Return unchanged data if not relocated
     if rela is None:
-        return BinarySection(sec_id, sec, sec.data(), [], [])
+        return BinarySection(ctx.sec_id_map[sec_id], sec, sec.data(), [], [])
 
     rela = cast("RelocationSection", rela)
 
@@ -363,8 +363,8 @@ def parse_section(
             continue
         target_offset = target.offset + reloc.r_addend
 
-        if target.section_id >= SHN_INDICES.SHN_LORESERVE:
-            raise UnsupportedSectionError(target.section_id)
+        if int(target.section_id) >= SHN_INDICES.SHN_LORESERVE:
+            raise UnsupportedSectionError(int(target.section_id))
 
         # Check when to apply
         skip_runtime = False
@@ -389,20 +389,20 @@ def parse_section(
 
             runtime_relocs.append(rel_reloc)
 
-    return BinarySection(sec_id, sec, dat, runtime_relocs, static_relocs)
+    return BinarySection(ctx.sec_id_map[sec_id], sec, dat, runtime_relocs, static_relocs)
 
 
 def build_section_contents(
     ctx: Context, file_pos: int, sections: list[BinarySection], baked_bss: list[BinarySection]
-) -> tuple[int, bytes, dict[int, int], int, int]:
+) -> tuple[int, bytes, dict[RelSectionId, int], int, int]:
     """Create the linked binary data for the sections
 
     Returns new file position, linked data, the file offsets of each section, rel alignment and bss alignment"""
 
     # Concatenate section contents, respecting alignment
     dat = bytearray()
-    offsets: dict[int, int] = {}  # positions in file
-    internal_offsets: dict[int, int] = {}  # positions in dat
+    offsets: dict[RelSectionId, int] = {}  # positions in file
+    internal_offsets: dict[RelSectionId, int] = {}  # positions in dat
     align = 0
     bss_align = 0
     for section in sections:
@@ -429,7 +429,7 @@ def build_section_contents(
             file_pos += section.header["sh_size"]
             dat.extend(contents)
 
-    def early_relocate(t: RelType, sec_id: int, offset: int, target_sec_id: int, target: int):
+    def early_relocate(t: RelType, sec_id: RelSectionId, offset: int, target_sec_id: RelSectionId, target: int):
         """Apply a relocation at compile time to a section"""
 
         # Get instruction
@@ -458,13 +458,13 @@ def build_section_contents(
             for reloc in sec.runtime_relocs:
                 if reloc.t == RelType.REL24:
                     early_relocate(
-                        reloc.t, sec.sec_id, reloc.offset, unresolved.st_shndx, unresolved.st_value
+                        reloc.t, sec.sec_id, reloc.offset, ctx.sec_id_map[unresolved.st_shndx], unresolved.st_value
                     )
 
     return file_pos, bytes(dat), offsets, align, bss_align
 
 
-def build_section_info(sections: Sequence[BinarySection | None], offsets: dict[int, int]) -> bytes:
+def build_section_info(sections: Sequence[BinarySection | None], offsets: dict[RelSectionId, int]) -> bytes:
     """Builds the linked section info table"""
 
     dat = bytearray()
@@ -499,7 +499,7 @@ def make_section_relocations(ctx: Context, section: BinarySection) -> dict[RelMo
             [r for r in section.runtime_relocs if r.target_module == module], key=lambda r: r.offset
         )
 
-        ret[module] = RelReloc.encode_section(ctx.sec_id_map[section.sec_id], filtered_relocs)
+        ret[module] = RelReloc.encode_section(section.sec_id, filtered_relocs)
 
     return ret
 
@@ -564,14 +564,14 @@ def build_relocations(
 
     # Sort reloc groups
     base = max(module_relocs.keys())
-    module_key: Callable[[int], int] | None
+    module_key: Callable[[RelModuleId], int] | None
     if ctx.behaviour["relocation_order"] == RelocationModuleOrder.MODERN_FORK:
 
-        def modern_fork_module_key(module: int):
-            if module in (0, ctx.module_id):
-                return base + module
+        def modern_fork_module_key(module: RelModuleId) -> int:
+            if module in (RelModuleId(0), ctx.module_id):
+                return int(base) + int(module)
             else:
-                return module
+                return int(module)
 
         module_key = modern_fork_module_key
     elif (
@@ -579,15 +579,15 @@ def build_relocations(
         and ctx.version >= RelHeader.FIX_SIZE_MIN_VER
     ):
 
-        def fix_size_module_key(module: int):
+        def fix_size_module_key(module: RelModuleId) -> int:
             # Put self second last
             if module == ctx.module_id:
-                return base + 1
+                return int(base) + 1
             # Put dol last
-            if module == 0:
-                return base + 2
+            if int(module) == 0:
+                return int(base) + 2
             # Put others in order of module id
-            return module
+            return int(module)
 
         module_key = fix_size_module_key
     else:
@@ -607,7 +607,7 @@ def build_relocations(
         rel_dat.extend(relocs)
         file_pos += len(relocs)
 
-        if ctx.behaviour["correct_fix_size"] and module_id not in (0, ctx.module_id):
+        if ctx.behaviour["correct_fix_size"] and module_id not in (RelModuleId(0), ctx.module_id):
             fix_size = file_pos
 
     # Combine data
@@ -730,8 +730,8 @@ def elf_to_rel(
                 [
                     {
                         "name": ctx.plf.get_section(id_elf).name,
-                        "from": id_elf,
-                        "to": id_rel,
+                        "from": int(id_elf),
+                        "to": int(id_rel),
                     }
                     for id_elf, id_rel in ctx.sec_id_map.items()
                 ],

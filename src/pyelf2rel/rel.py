@@ -7,11 +7,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import IntEnum, unique
 from struct import pack
-from typing import NewType
 
-RelModuleId = NewType("RelModuleId", int)
-RelSectionId = NewType("RelSectionId", int)
+@dataclass(frozen=True, eq=True, order=True)
+class RelModuleId:
+    _value: int
 
+    def __int__(self):
+        return self._value
+
+    def __str__(self):
+        return str(self._value)
+
+@dataclass(frozen=True, eq=True, order=True)
+class RelSectionId:
+    _value: int
+
+    def __int__(self):
+        return self._value
+
+    def __str__(self):
+        return str(self._value)
 
 @dataclass(frozen=True)
 class RelSymbol:
@@ -158,7 +173,7 @@ class RelReloc:
     def encode_reloc(relative_offset: int, t: RelType, section: RelSectionId, addend: int):
         """Gets the binary representation of a relocation"""
 
-        return pack(">HBBI", relative_offset, t, section, addend)
+        return pack(">HBBI", relative_offset, t, int(section), addend)
 
     @staticmethod
     def encode_section(section_id: RelSectionId, relocs: list[RelReloc]) -> bytes:
@@ -193,7 +208,7 @@ class RelImp:
     offset: int
 
     def to_binary(self) -> bytes:
-        return pack(">2I", self.module_id, self.offset)
+        return pack(">2I", int(self.module_id), self.offset)
 
     @staticmethod
     def binary_size(length: int) -> int:
@@ -238,7 +253,7 @@ class RelHeader:
 
         dat = pack(
             ">12I4B3I",
-            self.module_id,
+            int(self.module_id),
             self.next_rel,
             self.prev_rel,
             self.num_sections,
