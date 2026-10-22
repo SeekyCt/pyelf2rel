@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from sys import argv
 from typing import TYPE_CHECKING, TextIO, TypedDict, cast
 
@@ -874,13 +875,18 @@ def main(argv: list[str], *, ttyd_tools: bool = False):
         )
         parser.add_argument(
             "--strip-empty-sections",
-            default=False,
-            const=True,
-            nargs="?",
+            action="store_true",
             help=(
-                "Remove empty sections from the header, optionally emitting a json of the "
-                "section id mapping between the ELF and REL (WARNING: this will complicate "
-                "linking between multiple custom rels)"
+                "Remove empty sections from the header (WARNING: this will complicate linking "
+                "between multiple custom rels)"
+            ),
+        )
+        parser.add_argument(
+            "--create-section-map",
+            type=Path,
+            help=(
+                "Emit a json of the section id mapping between the ELF and REL (with the default "
+                "options there will be no change between the two)"
             ),
         )
         parser.add_argument(
@@ -939,13 +945,8 @@ def main(argv: list[str], *, ttyd_tools: bool = False):
         else:
             missing_weak = None
 
-        match cast("bool | str", args.strip_empty_sections):
-            case bool(x):
-                strip_empty_sections = x
-                section_map_path = None
-            case str(x):
-                strip_empty_sections = True
-                section_map_path = x
+        strip_empty_sections = args.strip_empty_sections
+        section_map_path = args.create_section_map
 
     with open(input_file, "rb") as f, open(symbol_file) as sym:
         dat = elf_to_rel(
