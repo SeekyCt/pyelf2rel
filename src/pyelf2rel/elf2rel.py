@@ -624,10 +624,20 @@ def build_relocations(
     return file_pos, RelocationInfo(reloc_offset, imp_offset, imp_size, fix_size, dat)
 
 
-def pick_sec_ids(ctx: Context, ignore_sections: list[str]) -> list[int]:
-    referenced: set[int] = set()
+def find_necessary_header_sections(ctx: Context, ignore_sections: list[str]) -> list[int]:
+    """
+    Decide which sections are necessary to emit slots for in the header
+
+    This includes:
+    - Any section that is actually loaded into memory
+    - Any section targetted by relocations from an included section
+    """
+
+    outgoing_refs: defaultdict[int, set[int]] = defaultdict(set)
     for sec in ctx.plf.iter_sections("SHT_RELA"):
         sec = cast("RelocationSection", sec)
+        target_id = sec.header.sh_info
+
         for reloc in read_relocs(ctx.file, sec):
             try:
                 t = RelType(reloc.r_info_type)
@@ -637,17 +647,30 @@ def pick_sec_ids(ctx: Context, ignore_sections: list[str]) -> list[int]:
                 continue
 
             sym = ctx.symbols[reloc.r_info_sym]
-            referenced.add(sym.st_shndx)
+            outgoing_refs[target_id].add(sym.st_shndx)
 
-    return [
+    include = set(
         sec_id
         for sec_id in range(ctx.plf.num_sections())
-        if (
-            should_include_section(ctx, sec_id, ignore_sections)
-            or sec_id == 0
-            or sec_id in referenced
-        )
-    ]
+        if should_include_section(ctx, sec_id, ignore_sections)
+        or sec_id == 0
+    )
+
+    # TODO: this will break ignore_sections
+    visited: set[int] = set()
+    def visit(sec_id: int):
+        if sec_id in visited:
+            return
+        visited.add(sec_id)
+
+        for target_sec in outgoing_refs[sec_id]:
+            include.add(target_sec)
+            visit(target_sec)
+
+    for startpoint in include.copy():
+        visit(startpoint)
+
+    return sorted(include)
 
 
 def elf_to_rel(
@@ -719,12 +742,14 @@ def elf_to_rel(
         unresolved_addr = 0
         unresolved_sec = 0
 
+    # Derive the mapping of section ids between the ELF and the generated REL
+    # Unless strip_empty_sections is set, these will be unchanged
     if strip_empty_sections:
-        included_sec_ids = pick_sec_ids(ctx, ignore_sections)
+        included_sec_ids = find_necessary_header_sections(ctx, ignore_sections)
     else:
         included_sec_ids = list(range(ctx.plf.num_sections()))
-
     ctx.sec_id_map = {sec_id: RelSectionId(i) for i, sec_id in enumerate(included_sec_ids)}
+
     if section_map_path is not None:
         with open(section_map_path, "w") as f:
             json.dump(
