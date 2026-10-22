@@ -766,14 +766,14 @@ def elf_to_rel(
             )
 
     # Parse sections
-    all_sections = [
+    sections_in_header = [
         parse_section(ctx, sec_id, missing_symbols, missing_weak_symbols)
         if should_include_section(ctx, sec_id, ignore_sections)
         else None
         for sec_id in range(ctx.plf.num_sections())
     ]
-    sections = [sec for sec in all_sections if sec is not None]
-    all_sections = [all_sections[sec_id] for sec_id in included_sec_ids]
+    sections_in_binary = [sec for sec in sections_in_header if sec is not None]
+    sections_in_header = [sections_in_header[sec_id] for sec_id in included_sec_ids]
 
     # Handle missing symbol errors
     error_missing: set[str] = set()
@@ -792,11 +792,11 @@ def elf_to_rel(
         raise MissingSymbolsError(error_missing)
 
     # Give space for section info
-    section_info_size = RelSectionInfo.binary_size(len(all_sections))
+    section_info_size = RelSectionInfo.binary_size(len(sections_in_header))
     file_pos += section_info_size
 
     # Find bss section
-    bss_sections = [sec for sec in sections if sec.header["sh_type"] == "SHT_NOBITS"]
+    bss_sections = [sec for sec in sections_in_binary if sec.header["sh_type"] == "SHT_NOBITS"]
     if ctx.behaviour["bake_multi_bss"]:
         baked_bss = sorted(bss_sections, key=lambda sec: sec.header["sh_size"])
         real_bss = baked_bss.pop(-1)
@@ -807,14 +807,14 @@ def elf_to_rel(
 
     # Build section contents
     (file_pos, section_contents, section_offsets, align, bss_align) = build_section_contents(
-        ctx, file_pos, sections, baked_bss
+        ctx, file_pos, sections_in_binary, baked_bss
     )
 
     # Build section table
-    section_info = build_section_info(all_sections, section_offsets)
+    section_info = build_section_info(sections_in_header, section_offsets)
 
     # Build relocs
-    section_relocs = [make_section_relocations(ctx, sec) for sec in sections]
+    section_relocs = [make_section_relocations(ctx, sec) for sec in sections_in_binary]
     module_relocs = group_module_relocations(section_relocs)
 
     # Build reloc contents
@@ -825,7 +825,7 @@ def elf_to_rel(
         ctx.module_id,
         0,
         0,
-        len(all_sections),
+        len(sections_in_header),
         section_info_offset,
         0,
         0,
