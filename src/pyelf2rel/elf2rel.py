@@ -430,7 +430,9 @@ def build_section_contents(
             file_pos += section.header["sh_size"]
             dat.extend(contents)
 
-    def early_relocate(t: RelType, sec_id: RelSectionId, offset: int, target_sec_id: RelSectionId, target: int):
+    def early_relocate(
+        t: RelType, sec_id: RelSectionId, offset: int, target_sec_id: RelSectionId, target: int
+    ):
         """Apply a relocation at compile time to a section"""
 
         # Get instruction
@@ -459,13 +461,19 @@ def build_section_contents(
             for reloc in sec.runtime_relocs:
                 if reloc.t == RelType.REL24:
                     early_relocate(
-                        reloc.t, sec.sec_id, reloc.offset, ctx.sec_id_map[unresolved.st_shndx], unresolved.st_value
+                        reloc.t,
+                        sec.sec_id,
+                        reloc.offset,
+                        ctx.sec_id_map[unresolved.st_shndx],
+                        unresolved.st_value,
                     )
 
     return file_pos, bytes(dat), offsets, align, bss_align
 
 
-def build_section_info(sections: Sequence[BinarySection | None], offsets: dict[RelSectionId, int]) -> bytes:
+def build_section_info(
+    sections: Sequence[BinarySection | None], offsets: dict[RelSectionId, int]
+) -> bytes:
     """Builds the linked section info table"""
 
     dat = bytearray()
@@ -484,7 +492,7 @@ def build_section_info(sections: Sequence[BinarySection | None], offsets: dict[R
     return bytes(dat)
 
 
-def make_section_relocations(ctx: Context, section: BinarySection) -> dict[RelModuleId, bytes]:
+def make_section_relocations(section: BinarySection) -> dict[RelModuleId, bytes]:
     """Creates the binary data for a section's relocations
 
     Returns a map from module id to the data targetting that module"""
@@ -649,15 +657,15 @@ def find_necessary_header_sections(ctx: Context, ignore_sections: list[str]) -> 
             sym = ctx.symbols[reloc.r_info_sym]
             outgoing_refs[target_id].add(sym.st_shndx)
 
-    include = set(
+    include = {
         sec_id
         for sec_id in range(ctx.plf.num_sections())
-        if should_include_section(ctx, sec_id, ignore_sections)
-        or sec_id == 0
-    )
+        if should_include_section(ctx, sec_id, ignore_sections) or sec_id == 0
+    }
 
     # TODO: this will break ignore_sections
     visited: set[int] = set()
+
     def visit(sec_id: int):
         if sec_id in visited:
             return
@@ -814,7 +822,7 @@ def elf_to_rel(
     section_info = build_section_info(sections_in_header, section_offsets)
 
     # Build relocs
-    section_relocs = [make_section_relocations(ctx, sec) for sec in sections_in_binary]
+    section_relocs = [make_section_relocations(sec) for sec in sections_in_binary]
     module_relocs = group_module_relocations(section_relocs)
 
     # Build reloc contents

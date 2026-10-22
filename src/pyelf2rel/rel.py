@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import IntEnum, unique
 from struct import pack
 
+
 @dataclass(frozen=True, eq=True, order=True)
 class RelModuleId:
     _value: int
@@ -18,6 +19,7 @@ class RelModuleId:
     def __str__(self):
         return str(self._value)
 
+
 @dataclass(frozen=True, eq=True, order=True)
 class RelSectionId:
     _value: int
@@ -27,6 +29,7 @@ class RelSectionId:
 
     def __str__(self):
         return str(self._value)
+
 
 @dataclass(frozen=True)
 class RelSymbol:
