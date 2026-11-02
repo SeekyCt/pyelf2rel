@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from argparse import ArgumentError, ArgumentParser
 from sys import argv, stdout
 from typing import TYPE_CHECKING, TextIO
@@ -18,7 +19,9 @@ if TYPE_CHECKING:
     from typing import BinaryIO
 
 
-def load_elf(module_id: RelModuleId, file: BinaryIO) -> str:
+def load_elf(
+    module_id: RelModuleId, file: BinaryIO, section_map: dict[int, RelSectionId] | None = None
+) -> str:
     """Creates an LST map of the symbols in an ELF file
 
     Returns the LST text and the list of symbols defined"""
@@ -26,14 +29,17 @@ def load_elf(module_id: RelModuleId, file: BinaryIO) -> str:
     plf = ELFFile(file)
     symbols = read_symbols(file, plf)
 
+    if section_map is None:
+        section_map = {i: RelSectionId(i) for i in range(plf.num_sections())}
+
     rel_symbols = [
-        # TODO: mapping support for --strip-empty-sections
-        RelSymbol(module_id, RelSectionId(sym.st_shndx), sym.st_value, sym.name)
+        RelSymbol(module_id, section_map[sym.st_shndx], sym.st_value, sym.name)
         for sym in symbols
         if (
             sym.name != ""
             and sym.st_bind == ENUM_ST_INFO_BIND["STB_GLOBAL"]
             and sym.st_shndx != SHN_INDICES.SHN_UNDEF
+            and sym.st_shndx in section_map
         )
     ]
 
@@ -41,15 +47,25 @@ def load_elf(module_id: RelModuleId, file: BinaryIO) -> str:
 
 
 def make_lst(
-    *, elfs: Iterable[tuple[RelModuleId, str]] | None = None, lsts: Iterable[str] | None = None
+    *,
+    elfs: Iterable[tuple[RelModuleId, str]] | None = None,
+    lsts: Iterable[str] | None = None,
+    section_maps: dict[RelModuleId, str] | None,
 ) -> str:
     """Makes an LST by combining symbols from ELFs and LSTs"""
 
     txts: list[tuple[str, str]] = []
 
     for module_id, elf_path in elfs or []:
+        section_map: dict[int, RelSectionId] | None
+        if section_maps is not None and module_id in section_maps:
+            with open(section_maps[module_id]) as f:
+                section_map = {e["from"]: e["to"] for e in json.load(f)}
+        else:
+            section_map = None
+
         with open(elf_path, "rb") as f:
-            txt = load_elf(module_id, f)
+            txt = load_elf(module_id, f, section_map)
         txts.append((elf_path, txt))
 
     for lst_path in lsts or []:
@@ -69,14 +85,28 @@ def main(argv: list[str], out: TextIO = stdout):
     arg_elf = parser.add_argument(
         "--elf", type=str, nargs="+", default=[], help="Input module id and elf path pairs"
     )
+    arg_secmap = parser.add_argument(
+        "--section-map",
+        type=str,
+        nargs="+",
+        default=[],
+        help="Input module id and section map json path pairs",
+    )
     parser.add_argument("--lst", type=str, nargs="+", default=[], help="Input lst paths")
     args = parser.parse_args(argv)
 
     if len(args.elf or []) % 2 != 0:
         raise ArgumentError(arg_elf, "Inputs require a module id and path for each entry")
-    elfs = [(RelModuleId(int(module_id)), path) for module_id, path in pairwise(args.elf)]
 
-    out.write(make_lst(elfs=elfs, lsts=args.lst))
+    if len(args.section_map or []) % 2 != 0:
+        raise ArgumentError(arg_secmap, "Inputs require a module id and path for each entry")
+
+    elfs = [(RelModuleId(int(module_id)), path) for module_id, path in pairwise(args.elf)]
+    section_maps = {
+        RelModuleId(int(module_id)): path for module_id, path in pairwise(args.section_map)
+    }
+
+    out.write(make_lst(elfs=elfs, lsts=args.lst, section_maps=section_maps))
 
 
 def entry():

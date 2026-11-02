@@ -910,8 +910,8 @@ def main(argv: list[str], *, ttyd_tools: bool = False):
             "--strip-empty-sections",
             action="store_true",
             help=(
-                "Remove empty sections from the header (WARNING: this will complicate linking "
-                "between multiple custom rels)"
+                "Remove empty sections from the header (WARNING: if you are using makelst, "
+                "enabling this will require providing makelst a section map json"
             ),
         )
         parser.add_argument(
