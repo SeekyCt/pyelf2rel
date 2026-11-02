@@ -632,7 +632,7 @@ def build_relocations(
     return file_pos, RelocationInfo(reloc_offset, imp_offset, imp_size, fix_size, dat)
 
 
-def find_necessary_header_sections(ctx: Context, ignore_sections: list[str]) -> list[int]:
+def find_necessary_header_sections(ctx: Context, ignore_sections: list[str]) -> set[int]:
     """
     Decide which sections are necessary to emit slots for in the header
 
@@ -678,7 +678,7 @@ def find_necessary_header_sections(ctx: Context, ignore_sections: list[str]) -> 
     for startpoint in include.copy():
         visit(startpoint)
 
-    return sorted(include)
+    return include
 
 
 def elf_to_rel(
@@ -752,8 +752,9 @@ def elf_to_rel(
 
     # Derive the mapping of section ids between the ELF and the generated REL
     # Unless strip_empty_sections is set, these will be unchanged
+    included_sec_ids: list[int]
     if strip_empty_sections:
-        included_sec_ids = find_necessary_header_sections(ctx, ignore_sections)
+        included_sec_ids = sorted(find_necessary_header_sections(ctx, ignore_sections))
     else:
         included_sec_ids = list(range(ctx.plf.num_sections()))
     ctx.sec_id_map = {sec_id: RelSectionId(i) for i, sec_id in enumerate(included_sec_ids)}
@@ -778,10 +779,9 @@ def elf_to_rel(
         parse_section(ctx, sec_id, missing_symbols, missing_weak_symbols)
         if should_include_section(ctx, sec_id, ignore_sections)
         else None
-        for sec_id in range(ctx.plf.num_sections())
+        for sec_id in included_sec_ids
     ]
     sections_in_binary = [sec for sec in sections_in_header if sec is not None]
-    sections_in_header = [sections_in_header[sec_id] for sec_id in included_sec_ids]
 
     # Handle missing symbol errors
     error_missing: set[str] = set()
