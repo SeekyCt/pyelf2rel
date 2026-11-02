@@ -663,7 +663,6 @@ def find_necessary_header_sections(ctx: Context, ignore_sections: list[str]) -> 
         if should_include_section(ctx, sec_id, ignore_sections) or sec_id == 0
     }
 
-    # TODO: this will break ignore_sections
     visited: set[int] = set()
 
     def visit(sec_id: int):
@@ -672,6 +671,9 @@ def find_necessary_header_sections(ctx: Context, ignore_sections: list[str]) -> 
         visited.add(sec_id)
 
         for target_sec in outgoing_refs[sec_id]:
+            if ctx.plf.get_section(target_sec).name in ignore_sections:
+                continue
+
             include.add(target_sec)
             visit(target_sec)
 
