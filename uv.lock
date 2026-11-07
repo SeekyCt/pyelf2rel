@@ -561,7 +561,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pyelftools" }]
+requires-dist = [{ name = "pyelftools", specifier = ">=0.33" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "hatch", specifier = ">=1.18.1" }]
