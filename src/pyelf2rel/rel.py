@@ -176,6 +176,9 @@ class RelReloc:
     def encode_reloc(relative_offset: int, t: RelType, section: RelSectionId, addend: int):
         """Gets the binary representation of a relocation"""
 
+        # Rel relocs may use negative addends, but dol relocs can also use addends >0x8000_0000
+        addend &= 0xFFFF_FFFF
+
         return pack(">HBBI", relative_offset, t, int(section), addend)
 
     @staticmethod
